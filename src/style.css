@@ -1,0 +1,24 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+#app {
+  background: rgba(24, 24, 27, 0.92);
+  border-radius: 10px;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 8px;
+  color: #e4e4e7;
+  user-select: none;
+}
+
+#session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

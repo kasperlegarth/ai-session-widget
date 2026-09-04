@@ -10,3 +10,7 @@ Thumbs.db
 .vscode/
 .idea/
 .worktrees/
+
+# Rust / Tauri
+/src-tauri/target/
+/dist/
