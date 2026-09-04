@@ -6,11 +6,12 @@ mod sessions;
 mod pid;
 mod status;
 mod model;
+mod focus;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![commands::get_sessions])
+        .invoke_handler(tauri::generate_handler![commands::get_sessions, commands::focus_session])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

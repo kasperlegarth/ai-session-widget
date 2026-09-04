@@ -15,3 +15,8 @@ pub fn get_sessions() -> Vec<SessionInfo> {
 
     build_session_list(&sessions_dir, &projects_dir, |pid| is_pid_alive(&sys, pid))
 }
+
+#[tauri::command]
+pub fn focus_session(pid: u32) {
+    crate::focus::focus_pid(pid);
+}
