@@ -89,3 +89,53 @@ setInterval(() => void refresh(), POLL_INTERVAL_MS);
 
 // Exposed for the context menu (Task 10) to trigger a manual refresh.
 (window as unknown as { __refreshSessions: () => void }).__refreshSessions = () => void refresh();
+
+const contextMenu = document.getElementById("context-menu") as HTMLDivElement;
+const menuAlwaysOnTop = document.getElementById("menu-always-on-top") as HTMLDivElement;
+const menuRefresh = document.getElementById("menu-refresh") as HTMLDivElement;
+const menuClose = document.getElementById("menu-close") as HTMLDivElement;
+
+let alwaysOnTop = true; // matches tauri.conf.json default
+
+function updateAlwaysOnTopCheckmark(): void {
+  menuAlwaysOnTop.classList.toggle("checked", alwaysOnTop);
+}
+updateAlwaysOnTopCheckmark();
+
+function showContextMenu(x: number, y: number): void {
+  contextMenu.style.left = `${x}px`;
+  contextMenu.style.top = `${y}px`;
+  contextMenu.hidden = false;
+}
+
+function hideContextMenu(): void {
+  contextMenu.hidden = true;
+}
+
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  showContextMenu(e.clientX, e.clientY);
+});
+
+document.addEventListener("click", (e) => {
+  if (!contextMenu.contains(e.target as Node)) {
+    hideContextMenu();
+  }
+});
+
+menuAlwaysOnTop.addEventListener("click", () => {
+  alwaysOnTop = !alwaysOnTop;
+  updateAlwaysOnTopCheckmark();
+  void invoke("set_always_on_top", { enabled: alwaysOnTop });
+  hideContextMenu();
+});
+
+menuRefresh.addEventListener("click", () => {
+  (window as unknown as { __refreshSessions: () => void }).__refreshSessions();
+  hideContextMenu();
+});
+
+menuClose.addEventListener("click", () => {
+  void invoke("close_app");
+  hideContextMenu();
+});

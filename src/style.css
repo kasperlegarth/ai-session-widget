@@ -84,3 +84,37 @@ html, body {
   padding: 12px 8px;
   text-align: center;
 }
+
+.context-menu {
+  position: fixed;
+  min-width: 160px;
+  background: #27272a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.menu-check {
+  width: 12px;
+  visibility: hidden;
+}
+
+.context-menu-item.checked .menu-check {
+  visibility: visible;
+}
