@@ -15,6 +15,7 @@ html, body {
   padding: 8px;
   color: #e4e4e7;
   user-select: none;
+  overflow-y: auto;
 }
 
 #session-list {
