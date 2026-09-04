@@ -1,1 +1,91 @@
-console.log("Claude Session Widget starting");
+import { invoke } from "@tauri-apps/api/core";
+
+type SessionStatus = "working" | "needsInput" | "waiting";
+
+interface SessionInfo {
+  pid: number;
+  sessionId: string;
+  name: string;
+  cwd: string;
+  status: SessionStatus;
+}
+
+const POLL_INTERVAL_MS = 2000;
+
+const listEl = document.getElementById("session-list") as HTMLUListElement;
+
+function lastPathSegment(cwd: string): string {
+  const normalized = cwd.replace(/\\/g, "/").replace(/\/$/, "");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || cwd;
+}
+
+function statusLabel(status: SessionStatus): string {
+  switch (status) {
+    case "working":
+      return "Working";
+    case "needsInput":
+      return "Needs input";
+    case "waiting":
+      return "Waiting";
+  }
+}
+
+function render(sessions: SessionInfo[]): void {
+  listEl.innerHTML = "";
+
+  if (sessions.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "empty-state";
+    empty.textContent = "Ingen aktive sessioner";
+    listEl.appendChild(empty);
+    return;
+  }
+
+  for (const session of sessions) {
+    const item = document.createElement("li");
+    item.className = "session-row";
+    item.title = session.cwd;
+
+    const dot = document.createElement("span");
+    dot.className = `status-dot status-${session.status}`;
+    dot.title = statusLabel(session.status);
+
+    const text = document.createElement("span");
+    text.className = "session-text";
+
+    const name = document.createElement("span");
+    name.className = "session-name";
+    name.textContent = session.name;
+
+    const dir = document.createElement("span");
+    dir.className = "session-dir";
+    dir.textContent = lastPathSegment(session.cwd);
+
+    text.appendChild(name);
+    text.appendChild(dir);
+    item.appendChild(dot);
+    item.appendChild(text);
+
+    item.addEventListener("click", () => {
+      void invoke("focus_session", { pid: session.pid });
+    });
+
+    listEl.appendChild(item);
+  }
+}
+
+async function refresh(): Promise<void> {
+  try {
+    const sessions = await invoke<SessionInfo[]>("get_sessions");
+    render(sessions);
+  } catch (err) {
+    console.error("Failed to refresh sessions", err);
+  }
+}
+
+void refresh();
+setInterval(() => void refresh(), POLL_INTERVAL_MS);
+
+// Exposed for the context menu (Task 10) to trigger a manual refresh.
+(window as unknown as { __refreshSessions: () => void }).__refreshSessions = () => void refresh();
