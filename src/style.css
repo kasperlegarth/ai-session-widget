@@ -15,7 +15,31 @@ html, body {
   padding: 8px;
   color: #e4e4e7;
   user-select: none;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#drag-region {
+  flex-shrink: 0;
+  height: 14px;
+  margin-bottom: 4px;
+  border-radius: 10px 10px 0 0;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: move;
+  position: relative;
+}
+
+#drag-region::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
 }
 
 #session-list {
@@ -25,6 +49,8 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .session-row {

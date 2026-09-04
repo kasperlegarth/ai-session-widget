@@ -1,7 +1,10 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::fs;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+
+const TAIL_SEEK_WINDOW: u64 = 65536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,14 +15,36 @@ pub enum SessionStatus {
 }
 
 pub fn read_tail_lines(path: &Path, n: usize) -> Vec<String> {
-    let Ok(contents) = fs::read_to_string(path) else {
+    let Ok(mut file) = File::open(path) else {
         return Vec::new();
     };
+    let Ok(file_len) = file.seek(SeekFrom::End(0)) else {
+        return Vec::new();
+    };
+
+    let seeked = file_len > TAIL_SEEK_WINDOW;
+    let start = if seeked { file_len - TAIL_SEEK_WINDOW } else { 0 };
+
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return Vec::new();
+    }
+
+    let mut buf = Vec::new();
+    if file.read_to_end(&mut buf).is_err() {
+        return Vec::new();
+    }
+    let contents = String::from_utf8_lossy(&buf);
+
     let mut lines: Vec<String> = contents
         .lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| l.to_string())
         .collect();
+
+    if seeked && !lines.is_empty() {
+        lines.remove(0);
+    }
+
     if lines.len() > n {
         lines = lines.split_off(lines.len() - n);
     }
@@ -154,5 +179,23 @@ mod tests {
     fn read_tail_lines_missing_file_returns_empty() {
         let tail = read_tail_lines(Path::new("C:\\does\\not\\exist.jsonl"), 5);
         assert_eq!(tail, Vec::<String>::new());
+    }
+
+    #[test]
+    fn read_tail_lines_large_file_returns_correct_last_n_lines() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("large-transcript.jsonl");
+        let mut f = File::create(&path).unwrap();
+        for i in 0..20000 {
+            writeln!(f, "line-{i:05}-padding-to-make-this-longer-than-trivial").unwrap();
+        }
+        drop(f);
+
+        let tail = read_tail_lines(&path, 5);
+
+        let expected: Vec<String> = (19995..20000)
+            .map(|i| format!("line-{i:05}-padding-to-make-this-longer-than-trivial"))
+            .collect();
+        assert_eq!(tail, expected);
     }
 }

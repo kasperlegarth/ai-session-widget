@@ -2,7 +2,8 @@ use crate::pid::filter_alive;
 use crate::sessions::{project_dir_for_cwd, read_sessions_dir};
 use crate::status::{compute_status, read_tail_lines, SessionStatus};
 use serde::Serialize;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,9 +26,10 @@ pub fn build_session_list(
     alive
         .into_iter()
         .map(|s| {
-            let project_dir = projects_dir.join(project_dir_for_cwd(&s.cwd));
-            let transcript_path = project_dir.join(format!("{}.jsonl", s.session_id));
-            let tail = read_tail_lines(&transcript_path, 5);
+            let tail = match resolve_transcript_path(projects_dir, &s.cwd, &s.session_id) {
+                Some(transcript_path) => read_tail_lines(&transcript_path, 5),
+                None => Vec::new(),
+            };
             let status = compute_status(s.idle, &tail);
             SessionInfo {
                 pid: s.pid,
@@ -38,6 +40,28 @@ pub fn build_session_list(
             }
         })
         .collect()
+}
+
+/// Resolves the transcript file path for a session. Tries the fast path derived
+/// directly from `cwd` first; if that doesn't exist (e.g. the derivation scheme
+/// doesn't match how Claude Code actually named the project dir), falls back to
+/// scanning `projects_dir` for any subdirectory containing `<session_id>.jsonl`.
+fn resolve_transcript_path(projects_dir: &Path, cwd: &str, session_id: &str) -> Option<PathBuf> {
+    let derived = projects_dir
+        .join(project_dir_for_cwd(cwd))
+        .join(format!("{session_id}.jsonl"));
+    if derived.exists() {
+        return Some(derived);
+    }
+
+    let entries = fs::read_dir(projects_dir).ok()?;
+    for entry in entries.flatten() {
+        let candidate = entry.path().join(format!("{session_id}.jsonl"));
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -115,5 +139,36 @@ mod tests {
         let result = build_session_list(&sessions_dir, &projects_dir, |_| false);
 
         assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn falls_back_to_scanning_project_dirs_when_derived_dir_does_not_exist() {
+        let root = tempdir().unwrap();
+        let sessions_dir = root.path().join("sessions");
+        let projects_dir = root.path().join("projects");
+        fs::create_dir_all(&sessions_dir).unwrap();
+        fs::create_dir_all(&projects_dir).unwrap();
+
+        // cwd derives to "C--Projects-missing", which will NOT exist on disk.
+        fs::write(
+            sessions_dir.join("444.json"),
+            r#"{"pid":444,"sessionId":"sess-4","cwd":"C:\\Projects\\missing","name":"missing-1a","status":"idle"}"#,
+        )
+        .unwrap();
+
+        // The transcript actually lives under a differently-named project dir.
+        let actual_project_subdir = projects_dir.join("some-other-dir-name");
+        fs::create_dir_all(&actual_project_subdir).unwrap();
+        fs::write(
+            actual_project_subdir.join("sess-4.jsonl"),
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash"}]}}
+"#,
+        )
+        .unwrap();
+
+        let result = build_session_list(&sessions_dir, &projects_dir, |pid| pid == 444);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].status, SessionStatus::NeedsInput);
     }
 }
