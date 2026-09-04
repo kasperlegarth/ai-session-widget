@@ -20,3 +20,13 @@ pub fn get_sessions() -> Vec<SessionInfo> {
 pub fn focus_session(pid: u32) {
     crate::focus::focus_pid(pid);
 }
+
+#[tauri::command]
+pub fn set_always_on_top(window: tauri::Window, enabled: bool) {
+    let _ = window.set_always_on_top(enabled);
+}
+
+#[tauri::command]
+pub fn close_app(window: tauri::Window) {
+    let _ = window.close();
+}
