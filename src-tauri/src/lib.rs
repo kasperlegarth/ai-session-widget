@@ -4,6 +4,7 @@
 mod sessions;
 mod pid;
 mod status;
+mod model;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
