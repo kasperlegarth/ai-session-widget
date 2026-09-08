@@ -49,14 +49,16 @@ function lastPathSegment(cwd: string): string {
   return parts[parts.length - 1] || cwd;
 }
 
-function statusLabel(status: SessionStatus): string {
+function statusLabel(status: MascotStatus): string {
   switch (status) {
     case "working":
       return "Working";
     case "needsInput":
       return "Waiting for input";
-    case "waiting":
+    case "waitingAlert":
       return "Waiting";
+    case "waiting":
+      return "Idle";
   }
 }
 
@@ -98,7 +100,7 @@ function render(sessions: SessionInfo[]): void {
 
     const statusText = document.createElement("span");
     statusText.className = `session-status status-text-${visual}`;
-    statusText.textContent = statusLabel(session.status);
+    statusText.textContent = statusLabel(visual);
 
     statusRow.appendChild(statusDot);
     statusRow.appendChild(statusText);
