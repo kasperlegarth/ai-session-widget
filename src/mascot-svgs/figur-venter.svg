@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="150" viewBox="0 0 180 150" fill="none">
+  <title>Pixelfiguren venter utålmodigt</title>
+  <desc>Figuren vipper med foden, kigger til siderne og tjekker et ur, hvis visere snurrer alt for hurtigt. Den sænker uret og sukker. Ti sekunders gentagelse, ren vektorkode og gennemsigtig baggrund.</desc>
+  <g transform="translate(35 64)">
+    <g>
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 -2;0 3;0 3;0 0;0 0" keyTimes="0;0.65;0.69;0.74;0.81;0.87;1" dur="10s" repeatCount="indefinite"/>
+      <path fill="#d97757" d="M15 0H77V15H93V31H77V47H15V31H0V15H15Z"/>
+      <path fill="#d97757" d="M15 47H23V62H15ZM31 47H38V62H31ZM54 47H62V62H54Z"/>
+      <path fill="#d97757" d="M69 47H77V62H69Z">
+        <animate attributeName="d" values="M69 47H77V62H69Z;M69 47H77V56H84V62H69Z;M69 47H77V62H69Z;M69 47H77V56H84V62H69Z;M69 47H77V62H69Z;M69 47H77V56H84V62H69Z;M69 47H77V62H69Z;M69 47H77V62H69Z" keyTimes="0;0.07;0.12;0.19;0.24;0.31;0.36;1" calcMode="discrete" dur="10s" repeatCount="indefinite"/>
+      </path>
+      <!-- Sideways glances and one long, exasperated blink. -->
+      <g fill="#221f1c">
+        <animateTransform attributeName="transform" type="translate" values="0 0;-4 0;-4 0;4 0;4 0;0 0;0 0" keyTimes="0;0.08;0.18;0.23;0.59;0.65;1" calcMode="discrete" dur="10s" repeatCount="indefinite"/>
+        <path d="M23 8H31V16H23ZM62 8H70V16H62Z">
+          <animate attributeName="d" values="M23 8H31V16H23ZM62 8H70V16H62Z;M23 12H31V15H23ZM62 12H70V15H62Z;M23 8H31V16H23ZM62 8H70V16H62Z;M23 12H31V15H23ZM62 12H70V15H62Z;M23 8H31V16H23ZM62 8H70V16H62Z" keyTimes="0;0.18;0.2;0.7;0.84" calcMode="discrete" dur="10s" repeatCount="indefinite"/>
+        </path>
+      </g>
+      <!-- The arm and oversized wristwatch rise together. -->
+      <g>
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 0;-5 -23;-5 -23;0 0;0 0" keyTimes="0;0.36;0.43;0.6;0.67;1" dur="10s" repeatCount="indefinite"/>
+        <path fill="#d97757" d="M77 23H99V39H84V31H77Z"/>
+        <path fill="#55564c" d="M87 21H95V41H87Z"/>
+        <path fill="#55564c" d="M83 23H99V39H83Z"/>
+        <path fill="#f2eee5" d="M85 25H97V37H85Z"/>
+        <g transform="translate(91 31)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" values="0;0;1080;1080" keyTimes="0;0.43;0.6;1" dur="10s" repeatCount="indefinite"/>
+            <path stroke="#55564c" stroke-width="2" d="M0 -5V0H4"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+  <!-- A tiny pixel sigh drifts away after checking the time. -->
+  <g opacity="0" fill="#908f85">
+    <animate attributeName="opacity" values="0;0;0.8;0.8;0;0" keyTimes="0;0.73;0.76;0.8;0.89;1" dur="10s" repeatCount="indefinite"/>
+    <animateTransform attributeName="transform" type="translate" values="105 83;105 83;132 77;132 77" keyTimes="0;0.73;0.89;1" dur="10s" repeatCount="indefinite"/>
+    <path d="M0 0H7V3H0ZM4 -5H10V-2H4ZM4 5H10V8H4Z"/>
+  </g>
+</svg>

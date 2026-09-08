@@ -1,0 +1,58 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #1e1e1e;
+  color: #e4e4e7;
+  font-family: system-ui, sans-serif;
+}
+
+#controls {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #27272a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#controls input[type="range"] {
+  flex: 1;
+  max-width: 400px;
+}
+
+#stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  padding: 32px;
+}
+
+.debug-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.debug-card h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.debug-mascot-frame {
+  background: #f4f1ec;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.debug-mascot-frame svg {
+  image-rendering: pixelated;
+  transform-origin: center;
+}
