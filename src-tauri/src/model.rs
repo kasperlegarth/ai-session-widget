@@ -1,6 +1,6 @@
 use crate::pid::filter_alive;
 use crate::sessions::{project_dir_for_cwd, read_sessions_dir};
-use crate::status::{compute_status, read_tail_lines, SessionStatus};
+use crate::status::{compute_status, extract_activity, read_tail_lines, SessionStatus};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ pub struct SessionInfo {
     pub name: String,
     pub cwd: String,
     pub status: SessionStatus,
+    pub activity: Option<String>,
 }
 
 pub fn build_session_list(
@@ -31,12 +32,14 @@ pub fn build_session_list(
                 None => Vec::new(),
             };
             let status = compute_status(s.idle, &tail);
+            let activity = extract_activity(status, &tail);
             SessionInfo {
                 pid: s.pid,
                 session_id: s.session_id,
                 name: s.name,
                 cwd: s.cwd,
                 status,
+                activity,
             }
         })
         .collect()
@@ -103,7 +106,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_transcript_file_defaults_to_working_or_waiting_without_panic() {
+    fn missing_transcript_file_defaults_to_waiting_without_panic() {
+        // No status field (not idle) AND no transcript found anywhere —
+        // no evidence of activity, so this should read as Waiting rather
+        // than Working (see status::compute_status's empty-tail case).
         let root = tempdir().unwrap();
         let sessions_dir = root.path().join("sessions");
         let projects_dir = root.path().join("projects");
@@ -119,7 +125,7 @@ mod tests {
         let result = build_session_list(&sessions_dir, &projects_dir, |pid| pid == 222);
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].status, SessionStatus::Working);
+        assert_eq!(result[0].status, SessionStatus::Waiting);
     }
 
     #[test]

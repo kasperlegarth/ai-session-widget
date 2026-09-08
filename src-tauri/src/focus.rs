@@ -64,48 +64,132 @@ mod resolve_tests {
 }
 
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+};
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_Descendants};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
+    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+    IsWindowVisible, SetForegroundWindow, ShowWindow, SW_RESTORE,
 };
 
-struct FindContext {
+struct FindAllContext {
     target_pid: u32,
-    found: Option<HWND>,
+    found: Vec<HWND>,
 }
 
-unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let ctx = &mut *(lparam.0 as *mut FindContext);
+unsafe extern "system" fn enum_proc_collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let ctx = &mut *(lparam.0 as *mut FindAllContext);
     if !IsWindowVisible(hwnd).as_bool() {
         return BOOL(1);
     }
     let mut pid: u32 = 0;
     GetWindowThreadProcessId(hwnd, Some(&mut pid));
     if pid == ctx.target_pid {
-        ctx.found = Some(hwnd);
-        return BOOL(0); // stop enumeration
+        ctx.found.push(hwnd);
     }
-    BOOL(1)
+    BOOL(1) // keep going, collect every match
+}
+
+/// Every visible top-level window owned by `pid` — there can be more than
+/// one (e.g. several separate Windows Terminal windows all hosted by the
+/// same WindowsTerminal.exe process).
+fn all_windows_for_pid(pid: u32) -> Vec<HWND> {
+    let mut ctx = FindAllContext {
+        target_pid: pid,
+        found: Vec::new(),
+    };
+    unsafe {
+        let _ = EnumWindows(Some(enum_proc_collect), LPARAM(&mut ctx as *mut _ as isize));
+    }
+    ctx.found
 }
 
 fn window_for_pid(pid: u32) -> Option<HWND> {
-    let mut ctx = FindContext {
-        target_pid: pid,
-        found: None,
-    };
-    unsafe {
-        let _ = EnumWindows(Some(enum_proc), LPARAM(&mut ctx as *mut _ as isize));
-    }
-    ctx.found
+    all_windows_for_pid(pid).into_iter().next()
 }
 
 pub fn pid_has_window(pid: u32) -> bool {
     window_for_pid(pid).is_some()
 }
 
-/// Finds the visible top-level window owned by `pid` (or, failing that,
-/// by the nearest process ancestor that owns one) and brings it to the
-/// foreground. No-op if nothing is found.
-pub fn focus_pid(pid: u32) {
+/// Best-effort check of whether any UI Automation element under `hwnd`
+/// (e.g. a Windows Terminal tab title, or visible pane text) contains
+/// `hint` (case-insensitive). Used only to disambiguate between several
+/// windows that share one process id — Win32 has no direct "which window
+/// hosts this child process" API for apps like Windows Terminal that
+/// multiplex several windows/panes through one process via ConPTY, so this
+/// reads the window's own accessibility tree instead. Returns false (never
+/// panics) if UI Automation is unavailable or the walk fails for any reason.
+fn window_text_matches_hint(automation: &IUIAutomation, hwnd: HWND, hint_lower: &str) -> bool {
+    unsafe {
+        let Ok(element) = automation.ElementFromHandle(hwnd) else {
+            return false;
+        };
+        let Ok(condition) = automation.CreateTrueCondition() else {
+            return false;
+        };
+        let Ok(all) = element.FindAll(TreeScope_Descendants, &condition) else {
+            return false;
+        };
+        let Ok(count) = all.Length() else {
+            return false;
+        };
+        for i in 0..count {
+            let Ok(item) = all.GetElement(i) else {
+                continue;
+            };
+            let Ok(name) = item.CurrentName() else {
+                continue;
+            };
+            if name.to_string().to_lowercase().contains(hint_lower) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Picks the right window among several candidates sharing one process id
+/// by searching each one's UI Automation tree for `hint` (e.g. the
+/// session's project folder name). Falls back to the first candidate if
+/// there's only one, if UI Automation can't be initialized, or if none of
+/// them match — a wrong-but-present window beats a silent no-op.
+fn find_best_window(pid: u32, hint: &str) -> Option<HWND> {
+    let candidates = all_windows_for_pid(pid);
+    if candidates.len() <= 1 || hint.trim().is_empty() {
+        return candidates.into_iter().next();
+    }
+
+    let hint_lower = hint.to_lowercase();
+    let automation: Option<IUIAutomation> = unsafe {
+        // COINIT_APARTMENTTHREADED can legitimately return an "already
+        // initialized" error on a thread that's used this before — that's
+        // fine, CoCreateInstance below still works either way.
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()
+    };
+
+    if let Some(automation) = &automation {
+        for hwnd in &candidates {
+            if window_text_matches_hint(automation, *hwnd, &hint_lower) {
+                return Some(*hwnd);
+            }
+        }
+    }
+
+    candidates.into_iter().next()
+}
+
+/// Finds the visible top-level window owned by `pid` (or, failing that, by
+/// the nearest process ancestor that owns one) and brings it to the
+/// foreground. If that owner has several windows open (common for apps
+/// like Windows Terminal that host multiple windows from one process),
+/// `hint` (typically the session's project folder name) is used to pick
+/// the right one via UI Automation — see `find_best_window`. No-op if
+/// nothing is found at all.
+pub fn focus_pid(pid: u32, hint: &str) {
     use sysinfo::{Pid, System};
 
     let mut sys = System::new_all();
@@ -121,9 +205,38 @@ pub fn focus_pid(pid: u32) {
         return;
     };
 
-    if let Some(hwnd) = window_for_pid(target_pid) {
+    if let Some(hwnd) = find_best_window(target_pid, hint) {
         unsafe {
-            let _ = SetForegroundWindow(hwnd);
+            force_foreground(hwnd);
         }
+    }
+}
+
+/// Windows normally refuses SetForegroundWindow from a background process
+/// (the "foreground lock") unless the calling thread's input state is
+/// attached to the currently-focused thread's — this is the standard
+/// workaround: briefly attach, steal focus, detach. Without it,
+/// SetForegroundWindow fails silently (no error, window just never comes
+/// forward), which is exactly what made this a no-op for windows owned by
+/// a background process like a Windows Terminal instance the user hadn't
+/// just clicked into.
+unsafe fn force_foreground(hwnd: HWND) {
+    if IsIconic(hwnd).as_bool() {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+    }
+
+    let foreground = GetForegroundWindow();
+    let current_thread = GetCurrentThreadId();
+    let foreground_thread = GetWindowThreadProcessId(foreground, None);
+
+    let attached = foreground_thread != 0
+        && foreground_thread != current_thread
+        && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
+
+    let _ = BringWindowToTop(hwnd);
+    let _ = SetForegroundWindow(hwnd);
+
+    if attached {
+        let _ = AttachThreadInput(current_thread, foreground_thread, false);
     }
 }

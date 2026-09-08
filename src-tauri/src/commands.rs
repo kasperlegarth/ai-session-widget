@@ -18,8 +18,8 @@ pub async fn get_sessions() -> Vec<SessionInfo> {
 }
 
 #[tauri::command]
-pub fn focus_session(pid: u32) {
-    crate::focus::focus_pid(pid);
+pub fn focus_session(pid: u32, hint: String) {
+    crate::focus::focus_pid(pid, &hint);
 }
 
 #[tauri::command]
