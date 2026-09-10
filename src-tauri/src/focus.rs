@@ -223,7 +223,17 @@ pub fn focus_pid(pid: u32, hint: &str) {
         unsafe {
             force_foreground(hwnd);
         }
-        highlight_window(hwnd);
+        // `hwnd` itself can be a hidden, zero-size proxy window — notably
+        // ConPTY's "PseudoConsoleWindow", which Windows Terminal keeps one
+        // of per pane purely so legacy console APIs have something to
+        // resolve, and which is what makes SetForegroundWindow land on the
+        // right actual terminal window/tab in the first place (each pane
+        // has its own such window, one-to-one, so there's nothing to
+        // disambiguate — no UI Automation search needed). Highlighting that
+        // hwnd draws a 0x0 overlay nobody can see, so re-read whatever the
+        // OS actually put in the foreground and highlight that instead.
+        let visible_hwnd = unsafe { GetForegroundWindow() };
+        highlight_window(visible_hwnd);
     }
 }
 
@@ -286,33 +296,29 @@ fn ensure_overlay_class_registered() {
 /// overlay from that rect lands its frame partly or entirely in that
 /// invisible margin. `DWMWA_EXTENDED_FRAME_BOUNDS` reports the real visible
 /// bounds instead; fall back to `GetWindowRect` if DWM can't answer (no
-/// worse than before).
+/// worse than before), and treat a degenerate (zero-area) result from
+/// either as no answer at all.
 fn visual_window_rect(hwnd: HWND) -> Option<RECT> {
     unsafe {
         let mut dwm_rect = RECT::default();
-        let dwm_result = DwmGetWindowAttribute(
+        let dwm_ok = DwmGetWindowAttribute(
             hwnd,
             DWMWA_EXTENDED_FRAME_BOUNDS,
             &mut dwm_rect as *mut _ as *mut _,
             size_of::<RECT>() as u32,
-        );
-        let dwm_usable =
-            dwm_result.is_ok() && dwm_rect.right > dwm_rect.left && dwm_rect.bottom > dwm_rect.top;
-        eprintln!(
-            "[visual_window_rect] hwnd={:?} dwm_result={:?} dwm_rect={:?} usable={}",
-            hwnd, dwm_result, dwm_rect, dwm_usable
-        );
-        if dwm_usable {
+        )
+        .is_ok()
+            && dwm_rect.right > dwm_rect.left
+            && dwm_rect.bottom > dwm_rect.top;
+        if dwm_ok {
             return Some(dwm_rect);
         }
 
         let mut gwr_rect = RECT::default();
-        let gwr_result = GetWindowRect(hwnd, &mut gwr_rect);
-        eprintln!(
-            "[visual_window_rect] hwnd={:?} GetWindowRect result={:?} rect={:?}",
-            hwnd, gwr_result, gwr_rect
-        );
-        gwr_result.ok().map(|_| gwr_rect)
+        let gwr_ok = GetWindowRect(hwnd, &mut gwr_rect).is_ok()
+            && gwr_rect.right > gwr_rect.left
+            && gwr_rect.bottom > gwr_rect.top;
+        gwr_ok.then_some(gwr_rect)
     }
 }
 
@@ -335,9 +341,6 @@ fn highlight_window(hwnd: HWND) {
     let Some(rect) = visual_window_rect(hwnd) else {
         return;
     };
-    if rect.right <= rect.left || rect.bottom <= rect.top {
-        return;
-    }
 
     thread::spawn(move || unsafe {
         ensure_overlay_class_registered();
@@ -391,10 +394,6 @@ fn highlight_window(hwnd: HWND) {
             width,
             height,
             SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        );
-        eprintln!(
-            "[highlight_window] overlay hwnd={:?} rect={:?} size={}x{}",
-            overlay, rect, width, height
         );
         SetTimer(overlay, 1, HIGHLIGHT_DURATION_MS, None);
 
