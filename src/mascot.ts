@@ -413,13 +413,13 @@ interface Entry {
 const TICK_MS = 130;
 
 class MascotRegistry {
-  private entries = new Map<number, Entry>();
-  private ticks = new Map<number, number>();
+  private entries = new Map<string | number, Entry>();
+  private ticks = new Map<string | number, number>();
   private acc = 0;
   private last = performance.now();
   private started = false;
 
-  set(pid: number, element: SVGSVGElement, status: MascotStatus): void {
+  set(pid: string | number, element: SVGSVGElement, status: MascotStatus): void {
     const refs = refsByElement.get(element);
     if (!refs) return;
     this.entries.set(pid, { refs, status });
@@ -427,7 +427,7 @@ class MascotRegistry {
     this.ensureLoop();
   }
 
-  prune(activePids: Set<number>): void {
+  prune(activePids: Set<string | number>): void {
     for (const pid of this.entries.keys()) {
       if (!activePids.has(pid)) {
         this.entries.delete(pid);

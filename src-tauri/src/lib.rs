@@ -2,6 +2,7 @@
 // Later tasks add tauri::command handlers and register them here.
 
 mod commands;
+mod codex;
 mod sessions;
 mod pid;
 mod status;

@@ -1,15 +1,48 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { createMascotElement, mascots, type MascotStatus } from "./mascot";
+import { createCodexLogoElement } from "./codex-logo";
 
 const WINDOW_WIDTH = 340;
 const appEl = document.getElementById("app") as HTMLDivElement;
 const appWindow = getCurrentWindow();
 
-// Window has no OS-drawn resize handles (decorations: false, resizable:
-// false in tauri.conf.json) — this is the only thing that ever changes its
-// height, so it always matches however many session cards are showing.
+type ThemePreference = "light" | "dark" | "system";
+const THEME_STORAGE_KEY = "theme-preference";
+
+function loadThemePreference(): ThemePreference {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+}
+
+let themePreference: ThemePreference = loadThemePreference();
+
+type SizeMode = "auto" | "manual";
+const SIZE_MODE_STORAGE_KEY = "size-mode";
+
+function loadSizeMode(): SizeMode {
+  const stored = localStorage.getItem(SIZE_MODE_STORAGE_KEY);
+  return stored === "manual" ? "manual" : "auto";
+}
+
+let sizeMode: SizeMode = loadSizeMode();
+const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(): void {
+  const resolved = themePreference === "system" ? (systemDarkQuery.matches ? "dark" : "light") : themePreference;
+  document.documentElement.setAttribute("data-theme", resolved);
+}
+
+applyTheme();
+systemDarkQuery.addEventListener("change", () => {
+  if (themePreference === "system") applyTheme();
+});
+
+// Auto-fits the window height to however many session cards are showing.
+// Skipped in "manual" size mode, where the user has taken over sizing via
+// the OS resize border (see applySizeMode) and we must not fight them.
 async function resizeWindowToContent(): Promise<void> {
+  if (sizeMode === "manual") return;
   try {
     await appWindow.setSize(new LogicalSize(WINDOW_WIDTH, appEl.scrollHeight));
   } catch (err) {
@@ -17,9 +50,47 @@ async function resizeWindowToContent(): Promise<void> {
   }
 }
 
+// tauri.conf.json ships with resizable: false and decorations: false, so
+// there's no OS-drawn resize border to grab even once resizable is true —
+// decorations:false removes the non-client area Windows would otherwise
+// hit-test for resize cursors. The #resize-handles strips (shown only in
+// manual mode, see style.css) stand in for it via startResizeDragging().
+async function applySizeMode(): Promise<void> {
+  document.body.dataset.sizeMode = sizeMode;
+  try {
+    await appWindow.setResizable(sizeMode === "manual");
+  } catch (err) {
+    console.error("Failed to apply size mode", err);
+  }
+  if (sizeMode === "auto") {
+    await resizeWindowToContent();
+  }
+}
+
+void applySizeMode();
+
+for (const handle of document.querySelectorAll<HTMLDivElement>(".resize-handle")) {
+  const direction = handle.dataset.direction as
+    | "North"
+    | "South"
+    | "East"
+    | "West"
+    | "NorthEast"
+    | "NorthWest"
+    | "SouthEast"
+    | "SouthWest";
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    appWindow.startResizeDragging(direction).catch((err) => {
+      console.error("Failed to start resize dragging", err);
+    });
+  });
+}
+
 type SessionStatus = "working" | "needsInput" | "waiting";
 
 interface SessionInfo {
+  provider: "claude" | "codex";
   pid: number;
   sessionId: string;
   name: string;
@@ -77,10 +148,10 @@ function render(sessions: SessionInfo[]): void {
   for (const session of sessions) {
     const item = document.createElement("li");
     item.className = "session-card";
-    item.title = session.cwd;
+    item.title = `${session.provider === "codex" ? "Codex" : "Claude Code"}: ${session.name}\n${session.cwd}`;
 
-    const mascotEl = createMascotElement();
-    mascotEl.classList.add("mascot-svg");
+    const mascotEl = session.provider === "codex" ? createCodexLogoElement() : createMascotElement();
+    if (session.provider === "claude") mascotEl.classList.add("mascot-svg");
     item.appendChild(mascotEl);
 
     const text = document.createElement("div");
@@ -118,17 +189,19 @@ function render(sessions: SessionInfo[]): void {
     item.appendChild(text);
 
     item.addEventListener("click", () => {
-      if (session.pid < 0) return; // fake debug row, nothing to focus
+      if (session.pid <= 0) return; // unknown owner or demo row
       // hint disambiguates between several windows sharing one process id
       // (e.g. multiple separate Windows Terminal windows) — see focus.rs.
       void invoke("focus_session", { pid: session.pid, hint: lastPathSegment(session.cwd) });
     });
 
     listEl.appendChild(item);
-    mascots.set(session.pid, mascotEl, visual);
+    if (session.provider === "claude") {
+      mascots.set(`${session.provider}:${session.sessionId}`, mascotEl, visual);
+    }
   }
 
-  mascots.prune(new Set(sessions.map((s) => s.pid)));
+  mascots.prune(new Set(sessions.filter((s) => s.provider === "claude").map((s) => `${s.provider}:${s.sessionId}`)));
 }
 
 // TEMP DEBUG: replaces all real sessions with a fixed set of demo rows
@@ -143,6 +216,7 @@ function demoSession(
   activity: string | null,
 ): SessionInfo {
   return {
+    provider: "claude",
     pid,
     sessionId: `demo-${pid}`,
     name,
@@ -166,18 +240,24 @@ const DEMO_SESSIONS: SessionInfo[] = [
   demoSession(-11, "idle-plain", "waiting", null),
 ];
 
+let refreshing = false;
+
 async function refresh(): Promise<void> {
+  if (refreshing) return;
   if (DEMO_MODE) {
     render(DEMO_SESSIONS);
     await resizeWindowToContent();
     return;
   }
+  refreshing = true;
   try {
     const sessions = await invoke<SessionInfo[]>("get_sessions");
     render(sessions);
     await resizeWindowToContent();
   } catch (err) {
     console.error("Failed to refresh sessions", err);
+  } finally {
+    refreshing = false;
   }
 }
 
@@ -191,6 +271,15 @@ const contextMenu = document.getElementById("context-menu") as HTMLDivElement;
 const menuAlwaysOnTop = document.getElementById("menu-always-on-top") as HTMLDivElement;
 const menuRefresh = document.getElementById("menu-refresh") as HTMLDivElement;
 const menuClose = document.getElementById("menu-close") as HTMLDivElement;
+const themeMenuItems: Record<ThemePreference, HTMLDivElement> = {
+  light: document.getElementById("menu-theme-light") as HTMLDivElement,
+  dark: document.getElementById("menu-theme-dark") as HTMLDivElement,
+  system: document.getElementById("menu-theme-system") as HTMLDivElement,
+};
+const sizeMenuItems: Record<SizeMode, HTMLDivElement> = {
+  auto: document.getElementById("menu-size-auto") as HTMLDivElement,
+  manual: document.getElementById("menu-size-manual") as HTMLDivElement,
+};
 
 let alwaysOnTop = true; // matches tauri.conf.json default
 
@@ -233,6 +322,40 @@ menuAlwaysOnTop.addEventListener("click", () => {
   void invoke("set_always_on_top", { enabled: alwaysOnTop });
   hideContextMenu();
 });
+
+function updateThemeCheckmarks(): void {
+  for (const [pref, el] of Object.entries(themeMenuItems)) {
+    el.classList.toggle("checked", pref === themePreference);
+  }
+}
+updateThemeCheckmarks();
+
+for (const [pref, el] of Object.entries(themeMenuItems)) {
+  el.addEventListener("click", () => {
+    themePreference = pref as ThemePreference;
+    localStorage.setItem(THEME_STORAGE_KEY, themePreference);
+    applyTheme();
+    updateThemeCheckmarks();
+    hideContextMenu();
+  });
+}
+
+function updateSizeMenuCheckmarks(): void {
+  for (const [mode, el] of Object.entries(sizeMenuItems)) {
+    el.classList.toggle("checked", mode === sizeMode);
+  }
+}
+updateSizeMenuCheckmarks();
+
+for (const [mode, el] of Object.entries(sizeMenuItems)) {
+  el.addEventListener("click", () => {
+    sizeMode = mode as SizeMode;
+    localStorage.setItem(SIZE_MODE_STORAGE_KEY, sizeMode);
+    updateSizeMenuCheckmarks();
+    void applySizeMode();
+    hideContextMenu();
+  });
+}
 
 menuRefresh.addEventListener("click", () => {
   (window as unknown as { __refreshSessions: () => void }).__refreshSessions();

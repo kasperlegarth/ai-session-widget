@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
+    pub provider: &'static str,
     pub pid: u32,
     pub session_id: String,
     pub name: String,
@@ -34,6 +35,7 @@ pub fn build_session_list(
             let status = compute_status(s.idle, &tail);
             let activity = extract_activity(status, &tail);
             SessionInfo {
+                provider: "claude",
                 pid: s.pid,
                 session_id: s.session_id,
                 name: s.name,

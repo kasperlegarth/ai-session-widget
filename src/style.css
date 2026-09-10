@@ -1,4 +1,43 @@
+:root {
+  --bg-app: #f4f1ec;
+  --text-primary: #2c2a28;
+  --drag-bg: rgba(0, 0, 0, 0.04);
+  --drag-handle: rgba(0, 0, 0, 0.15);
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.06);
+  --card-border-hover: rgba(0, 0, 0, 0.12);
+  --card-shadow-1: rgba(0, 0, 0, 0.04);
+  --card-shadow-2: rgba(0, 0, 0, 0.04);
+  --text-muted: #8a8580;
+  --text-idle: #57534e;
+  --menu-bg: #ffffff;
+  --menu-border: rgba(0, 0, 0, 0.08);
+  --menu-shadow: rgba(0, 0, 0, 0.12);
+  --menu-hover: rgba(0, 0, 0, 0.06);
+  --menu-separator: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] {
+  --bg-app: #2a2825;
+  --text-primary: #eae6e0;
+  --drag-bg: rgba(255, 255, 255, 0.06);
+  --drag-handle: rgba(255, 255, 255, 0.2);
+  --card-bg: #38352f;
+  --card-border: rgba(255, 255, 255, 0.07);
+  --card-border-hover: rgba(255, 255, 255, 0.16);
+  --card-shadow-1: rgba(0, 0, 0, 0.2);
+  --card-shadow-2: rgba(0, 0, 0, 0.3);
+  --text-muted: #a49d92;
+  --text-idle: #bab2a4;
+  --menu-bg: #38352f;
+  --menu-border: rgba(255, 255, 255, 0.1);
+  --menu-shadow: rgba(0, 0, 0, 0.35);
+  --menu-hover: rgba(255, 255, 255, 0.08);
+  --menu-separator: rgba(255, 255, 255, 0.1);
+}
+
 html, body {
+  height: 100%;
   margin: 0;
   padding: 0;
   background: transparent;
@@ -8,11 +47,12 @@ html, body {
 }
 
 #app {
-  background: #f4f1ec;
+  min-height: 100%;
+  background: var(--bg-app);
   border-radius: 10px;
   box-sizing: border-box;
   padding: 8px;
-  color: #2c2a28;
+  color: var(--text-primary);
   user-select: none;
   display: flex;
   flex-direction: column;
@@ -23,7 +63,7 @@ html, body {
   height: 14px;
   margin-bottom: 4px;
   border-radius: 10px 10px 0 0;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--drag-bg);
   cursor: move;
   position: relative;
 }
@@ -36,7 +76,7 @@ html, body {
   width: 24px;
   height: 2px;
   border-radius: 1px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--drag-handle);
   transform: translate(-50%, -50%);
 }
 
@@ -57,13 +97,13 @@ html, body {
   padding: 8px 10px;
   border-radius: 12px;
   cursor: pointer;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 1px 2px var(--card-shadow-1), 0 4px 12px var(--card-shadow-2);
 }
 
 .session-card:hover {
-  border-color: rgba(0, 0, 0, 0.12);
+  border-color: var(--card-border-hover);
 }
 
 .mascot-svg {
@@ -79,10 +119,17 @@ html, body {
   flex: 1;
 }
 
+.codex-logo {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  color: var(--text-primary);
+}
+
 .session-name {
   font-weight: 600;
   font-size: 12px;
-  color: #8a8580;
+  color: var(--text-muted);
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
@@ -136,7 +183,7 @@ html, body {
 }
 
 .status-text-waiting {
-  color: #57534e;
+  color: var(--text-idle);
 }
 
 .status-text-waitingAlert {
@@ -145,7 +192,7 @@ html, body {
 
 .session-activity {
   font-size: 11px;
-  color: #8a8580;
+  color: var(--text-muted);
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
@@ -153,7 +200,7 @@ html, body {
 }
 
 .empty-state {
-  color: #8a8580;
+  color: var(--text-muted);
   padding: 12px 8px;
   text-align: center;
 }
@@ -161,13 +208,13 @@ html, body {
 .context-menu {
   position: fixed;
   min-width: 160px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px var(--menu-shadow);
   z-index: 1000;
-  color: #2c2a28;
+  color: var(--text-primary);
 }
 
 .context-menu-item {
@@ -181,7 +228,7 @@ html, body {
 }
 
 .context-menu-item:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--menu-hover);
 }
 
 .menu-check {
@@ -191,4 +238,100 @@ html, body {
 
 .context-menu-item.checked .menu-check {
   visibility: visible;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--menu-separator);
+}
+
+.context-menu-label {
+  padding: 4px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Window has no OS decorations, so there's no native resize border — these
+   invisible strips call startResizeDragging() to fake one. Only active in
+   "manual" size mode (see applySizeMode in main.ts); auto mode owns the
+   window size itself and would just fight the user. */
+#resize-handles {
+  display: none;
+}
+
+body[data-size-mode="manual"] #resize-handles {
+  display: block;
+}
+
+.resize-handle {
+  position: fixed;
+  z-index: 2000;
+}
+
+.resize-handle.n,
+.resize-handle.s {
+  left: 8px;
+  right: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.resize-handle.n {
+  top: 0;
+}
+
+.resize-handle.s {
+  bottom: 0;
+}
+
+.resize-handle.e,
+.resize-handle.w {
+  top: 8px;
+  bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.resize-handle.e {
+  right: 0;
+}
+
+.resize-handle.w {
+  left: 0;
+}
+
+.resize-handle.ne,
+.resize-handle.sw {
+  width: 10px;
+  height: 10px;
+  cursor: nesw-resize;
+}
+
+.resize-handle.nw,
+.resize-handle.se {
+  width: 10px;
+  height: 10px;
+  cursor: nwse-resize;
+}
+
+.resize-handle.ne {
+  top: 0;
+  right: 0;
+}
+
+.resize-handle.nw {
+  top: 0;
+  left: 0;
+}
+
+.resize-handle.se {
+  bottom: 0;
+  right: 0;
+}
+
+.resize-handle.sw {
+  bottom: 0;
+  left: 0;
 }

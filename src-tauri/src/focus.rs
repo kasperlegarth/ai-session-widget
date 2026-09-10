@@ -63,15 +63,29 @@ mod resolve_tests {
     }
 }
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use std::mem::size_of;
+use std::sync::Once;
+use std::thread;
+use windows::core::w;
+use windows::Win32::Foundation::{BOOL, COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+use windows::Win32::Graphics::Gdi::{
+    CombineRgn, CreateRectRgn, CreateSolidBrush, SetWindowRgn, RGN_DIFF,
+};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_Descendants};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    BringWindowToTop, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    EnumWindows, GetForegroundWindow, GetMessageW, GetWindowRect, GetWindowThreadProcessId,
+    IsIconic, IsWindowVisible, PostQuitMessage, RegisterClassExW, SetForegroundWindow,
+    SetLayeredWindowAttributes, SetTimer, SetWindowPos, ShowWindow, TranslateMessage,
+    CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, LWA_ALPHA, MSG, SW_RESTORE, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SWP_SHOWWINDOW, WM_DESTROY, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 struct FindAllContext {
@@ -209,7 +223,187 @@ pub fn focus_pid(pid: u32, hint: &str) {
         unsafe {
             force_foreground(hwnd);
         }
+        highlight_window(hwnd);
     }
+}
+
+/// How long the highlight overlay stays on screen — long enough to spot at
+/// a glance among several open terminal windows, short enough to not linger
+/// and look stuck.
+const HIGHLIGHT_DURATION_MS: u32 = 3000;
+
+/// Frame thickness of the highlight overlay, in pixels.
+const HIGHLIGHT_THICKNESS: i32 = 6;
+
+// COLORREF is 0x00BBGGRR, not RGB — this is a vivid orange (RGB 255,140,0),
+// chosen to stand out against both light and dark terminal themes.
+const HIGHLIGHT_COLOR: COLORREF = COLORREF(0x00_00_8C_FF);
+
+const OVERLAY_CLASS_NAME: windows::core::PCWSTR = w!("ClawdFocusHighlightOverlay");
+
+unsafe extern "system" fn overlay_wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_TIMER => {
+            let _ = DestroyWindow(hwnd);
+            LRESULT(0)
+        }
+        WM_DESTROY => {
+            PostQuitMessage(0);
+            LRESULT(0)
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
+
+fn ensure_overlay_class_registered() {
+    static REGISTERED: Once = Once::new();
+    REGISTERED.call_once(|| unsafe {
+        let Ok(module) = GetModuleHandleW(None) else {
+            return;
+        };
+        let class = WNDCLASSEXW {
+            cbSize: size_of::<WNDCLASSEXW>() as u32,
+            style: CS_HREDRAW | CS_VREDRAW,
+            lpfnWndProc: Some(overlay_wndproc),
+            hInstance: module.into(),
+            hbrBackground: CreateSolidBrush(HIGHLIGHT_COLOR),
+            lpszClassName: OVERLAY_CLASS_NAME,
+            ..Default::default()
+        };
+        RegisterClassExW(&class);
+    });
+}
+
+/// `GetWindowRect` reports a window's *legacy* bounds, which for a
+/// DWM-composed window include an invisible resize-border margin — several
+/// pixels wide, and pushed even further off-screen for a maximized window —
+/// that isn't part of what's actually drawn on screen. Positioning an
+/// overlay from that rect lands its frame partly or entirely in that
+/// invisible margin. `DWMWA_EXTENDED_FRAME_BOUNDS` reports the real visible
+/// bounds instead; fall back to `GetWindowRect` if DWM can't answer (no
+/// worse than before).
+fn visual_window_rect(hwnd: HWND) -> Option<RECT> {
+    unsafe {
+        let mut dwm_rect = RECT::default();
+        let dwm_result = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut dwm_rect as *mut _ as *mut _,
+            size_of::<RECT>() as u32,
+        );
+        let dwm_usable =
+            dwm_result.is_ok() && dwm_rect.right > dwm_rect.left && dwm_rect.bottom > dwm_rect.top;
+        eprintln!(
+            "[visual_window_rect] hwnd={:?} dwm_result={:?} dwm_rect={:?} usable={}",
+            hwnd, dwm_result, dwm_rect, dwm_usable
+        );
+        if dwm_usable {
+            return Some(dwm_rect);
+        }
+
+        let mut gwr_rect = RECT::default();
+        let gwr_result = GetWindowRect(hwnd, &mut gwr_rect);
+        eprintln!(
+            "[visual_window_rect] hwnd={:?} GetWindowRect result={:?} rect={:?}",
+            hwnd, gwr_result, gwr_rect
+        );
+        gwr_result.ok().map(|_| gwr_rect)
+    }
+}
+
+/// Briefly draws a thick colored frame directly over `hwnd`'s on-screen
+/// bounds — a hollow rectangle (via `SetWindowRgn`) so the window's own
+/// content stays visible underneath — then destroys itself after
+/// `HIGHLIGHT_DURATION_MS`.
+///
+/// This exists instead of the "obvious" native approach
+/// (`DWMWA_BORDER_COLOR`, which lets DWM color a window's real border): that
+/// call succeeds but is invisible in practice — apps like Windows Terminal
+/// can overwrite it with their own focus-color logic, and maximized windows
+/// hide their real border a few pixels off-screen. An owned topmost overlay
+/// sidesteps both: it draws on top of whatever's there and follows the
+/// window's actual screen rect regardless of maximize state.
+///
+/// Runs on its own thread with its own message loop, since the overlay
+/// needs to pump `WM_TIMER`/`WM_DESTROY` independently of the caller.
+fn highlight_window(hwnd: HWND) {
+    let Some(rect) = visual_window_rect(hwnd) else {
+        return;
+    };
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return;
+    }
+
+    thread::spawn(move || unsafe {
+        ensure_overlay_class_registered();
+
+        let Ok(module) = GetModuleHandleW(None) else {
+            return;
+        };
+
+        let Ok(overlay) = CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+            OVERLAY_CLASS_NAME,
+            w!(""),
+            WS_POPUP,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            None,
+            None,
+            module,
+            None,
+        ) else {
+            return;
+        };
+
+        // Punch out the interior so only a `HIGHLIGHT_THICKNESS`-wide frame
+        // around the edge is actually drawn — the window underneath stays
+        // fully visible and click-through (WS_EX_TRANSPARENT) inside it.
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        let outer = CreateRectRgn(0, 0, width, height);
+        let inner = CreateRectRgn(
+            HIGHLIGHT_THICKNESS,
+            HIGHLIGHT_THICKNESS,
+            width - HIGHLIGHT_THICKNESS,
+            height - HIGHLIGHT_THICKNESS,
+        );
+        CombineRgn(outer, outer, inner, RGN_DIFF);
+        SetWindowRgn(overlay, outer, BOOL(1));
+
+        let _ = SetLayeredWindowAttributes(overlay, COLORREF(0), 255, LWA_ALPHA);
+        let _ = ShowWindow(overlay, SW_SHOWNOACTIVATE);
+        // Belt-and-suspenders: WS_EX_TOPMOST at creation time doesn't always
+        // win against other topmost surfaces already on screen (our own
+        // always-on-top widget included) — explicitly reassert top-of-band.
+        let _ = SetWindowPos(
+            overlay,
+            HWND_TOPMOST,
+            rect.left,
+            rect.top,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+        eprintln!(
+            "[highlight_window] overlay hwnd={:?} rect={:?} size={}x{}",
+            overlay, rect, width, height
+        );
+        SetTimer(overlay, 1, HIGHLIGHT_DURATION_MS, None);
+
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    });
 }
 
 /// Windows normally refuses SetForegroundWindow from a background process
