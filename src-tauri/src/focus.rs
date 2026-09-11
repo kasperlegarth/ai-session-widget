@@ -64,13 +64,15 @@ mod resolve_tests {
 }
 
 use std::mem::size_of;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Once;
 use std::thread;
+use std::time::{Duration, Instant};
 use windows::core::w;
 use windows::Win32::Foundation::{BOOL, COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::Graphics::Gdi::{
-    CombineRgn, CreateRectRgn, CreateSolidBrush, SetWindowRgn, RGN_DIFF,
+    CombineRgn, CreateRectRgn, CreateSolidBrush, DeleteObject, SetWindowRgn, RGN_DIFF,
 };
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
@@ -81,11 +83,12 @@ use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
     EnumWindows, GetForegroundWindow, GetMessageW, GetWindowRect, GetWindowThreadProcessId,
-    IsIconic, IsWindowVisible, PostQuitMessage, RegisterClassExW, SetForegroundWindow,
-    SetLayeredWindowAttributes, SetTimer, SetWindowPos, ShowWindow, TranslateMessage,
-    CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, LWA_ALPHA, MSG, SW_RESTORE, SW_SHOWNOACTIVATE,
-    SWP_NOACTIVATE, SWP_SHOWWINDOW, WM_DESTROY, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    IsIconic, IsWindowVisible, PostMessageW, PostQuitMessage, RegisterClassExW,
+    SetForegroundWindow, SetLayeredWindowAttributes, SetTimer, SetWindowPos, ShowWindow,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, LWA_ALPHA, MSG, SW_RESTORE,
+    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, WM_CLOSE, WM_DESTROY, WM_TIMER,
+    WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 struct FindAllContext {
@@ -220,6 +223,7 @@ pub fn focus_pid(pid: u32, hint: &str) {
     };
 
     if let Some(hwnd) = find_best_window(target_pid, hint) {
+        let previous_foreground = unsafe { GetForegroundWindow() };
         unsafe {
             force_foreground(hwnd);
         }
@@ -232,8 +236,39 @@ pub fn focus_pid(pid: u32, hint: &str) {
         // disambiguate — no UI Automation search needed). Highlighting that
         // hwnd draws a 0x0 overlay nobody can see, so re-read whatever the
         // OS actually put in the foreground and highlight that instead.
-        let visible_hwnd = unsafe { GetForegroundWindow() };
+        //
+        // That handoff from the hidden proxy to the real, visible window
+        // isn't synchronous with SetForegroundWindow returning — Windows
+        // Terminal raises the real window a beat later. Reading
+        // GetForegroundWindow immediately afterward can still catch the
+        // previous window, or the same invisible proxy, which is exactly
+        // what made the highlight silently disappear even though focus
+        // itself landed correctly. Poll briefly for a foreground window
+        // actually owned by `target_pid` before falling back to whatever's
+        // current.
+        let visible_hwnd = wait_for_new_foreground(previous_foreground, target_pid);
         highlight_window(visible_hwnd);
+    }
+}
+
+const FOREGROUND_POLL_INTERVAL: Duration = Duration::from_millis(15);
+const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_millis(400);
+
+fn wait_for_new_foreground(previous: HWND, target_pid: u32) -> HWND {
+    let deadline = Instant::now() + FOREGROUND_WAIT_TIMEOUT;
+    loop {
+        let current = unsafe { GetForegroundWindow() };
+        let mut pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(current, Some(&mut pid));
+        }
+        if current != previous && pid == target_pid {
+            return current;
+        }
+        if Instant::now() >= deadline {
+            return current;
+        }
+        thread::sleep(FOREGROUND_POLL_INTERVAL);
     }
 }
 
@@ -258,7 +293,11 @@ unsafe extern "system" fn overlay_wndproc(
     lparam: LPARAM,
 ) -> LRESULT {
     match msg {
-        WM_TIMER => {
+        // WM_TIMER is the overlay's own natural expiry; WM_CLOSE is how a
+        // newer overlay (see ACTIVE_OVERLAY_HWND) asks an older, still-alive
+        // one to get out of the way immediately instead of leaving two
+        // overlays alive at once.
+        WM_TIMER | WM_CLOSE => {
             let _ = DestroyWindow(hwnd);
             LRESULT(0)
         }
@@ -269,6 +308,11 @@ unsafe extern "system" fn overlay_wndproc(
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }
+
+/// HWND (as its raw pointer value) of whichever highlight overlay is
+/// currently showing, or 0 if none. Only one overlay is ever meant to be on
+/// screen at a time — see `highlight_window`.
+static ACTIVE_OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
 
 fn ensure_overlay_class_registered() {
     static REGISTERED: Once = Once::new();
@@ -338,7 +382,18 @@ fn visual_window_rect(hwnd: HWND) -> Option<RECT> {
 /// Runs on its own thread with its own message loop, since the overlay
 /// needs to pump `WM_TIMER`/`WM_DESTROY` independently of the caller.
 fn highlight_window(hwnd: HWND) {
-    let Some(rect) = visual_window_rect(hwnd) else {
+    // A window that just got raised from minimized/background can briefly
+    // report a degenerate rect while DWM finishes the restore — retry a
+    // few times rather than silently giving up on the first miss.
+    let mut rect = None;
+    for attempt in 0..5 {
+        rect = visual_window_rect(hwnd);
+        if rect.is_some() || attempt == 4 {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let Some(rect) = rect else {
         return;
     };
 
@@ -366,6 +421,16 @@ fn highlight_window(hwnd: HWND) {
             return;
         };
 
+        // If a previous highlight is still on screen (e.g. a session was
+        // clicked again before the last one's 3s timer ran out), ask it to
+        // close right away rather than leaving two overlays alive at once —
+        // DestroyWindow can only be called by the thread that created the
+        // window, so this asks its own thread to do it via WM_CLOSE.
+        let previous = ACTIVE_OVERLAY_HWND.swap(overlay.0 as isize, Ordering::SeqCst);
+        if previous != 0 {
+            let _ = PostMessageW(HWND(previous as *mut _), WM_CLOSE, WPARAM(0), LPARAM(0));
+        }
+
         // Punch out the interior so only a `HIGHLIGHT_THICKNESS`-wide frame
         // around the edge is actually drawn — the window underneath stays
         // fully visible and click-through (WS_EX_TRANSPARENT) inside it.
@@ -379,6 +444,11 @@ fn highlight_window(hwnd: HWND) {
             height - HIGHLIGHT_THICKNESS,
         );
         CombineRgn(outer, outer, inner, RGN_DIFF);
+        // SetWindowRgn takes ownership of `outer` (must not be deleted after
+        // a successful call) — but `inner` was only a scratch input to
+        // CombineRgn and is never handed to Windows, so it has to be deleted
+        // here or it leaks a GDI region handle on every single highlight.
+        let _ = DeleteObject(inner);
         SetWindowRgn(overlay, outer, BOOL(1));
 
         let _ = SetLayeredWindowAttributes(overlay, COLORREF(0), 255, LWA_ALPHA);
@@ -402,6 +472,16 @@ fn highlight_window(hwnd: HWND) {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+
+        // Clear our slot, but only if a newer overlay hasn't already
+        // claimed it (it would have, via the swap above, if we were closed
+        // by WM_CLOSE rather than our own timer).
+        let _ = ACTIVE_OVERLAY_HWND.compare_exchange(
+            overlay.0 as isize,
+            0,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
     });
 }
 

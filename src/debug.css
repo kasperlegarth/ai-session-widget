@@ -1,9 +1,31 @@
 html, body {
+  --text-primary: #2c2a28;
+  --card-bg: #f4f1ec;
+  --status-working: #16a34a;
+  --status-needs-input: #dc2626;
+  --status-question: #2563eb;
+  --debug-page-bg: #1e1e1e;
+  --debug-page-text: #e4e4e7;
+  --debug-controls-bg: #27272a;
+  --debug-label: #57534e;
   margin: 0;
   padding: 0;
-  background: #1e1e1e;
-  color: #e4e4e7;
+  background: var(--debug-page-bg);
+  color: var(--debug-page-text);
   font-family: system-ui, sans-serif;
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  --text-primary: #eae6e0;
+  --card-bg: #38352f;
+  --status-working: #4ade80;
+  --status-needs-input: #f05252;
+  --status-question: #60a5fa;
+  --debug-page-bg: #11110f;
+  --debug-page-text: #eae6e0;
+  --debug-controls-bg: #201f1c;
+  --debug-label: #bab2a4;
 }
 
 #controls {
@@ -14,13 +36,26 @@ html, body {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  background: #27272a;
+  background: var(--debug-controls-bg);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 #controls input[type="range"] {
   flex: 1;
   max-width: 400px;
+}
+
+#theme-toggle {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 7px;
+  padding: 5px 10px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+#theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 #stage {
@@ -44,15 +79,37 @@ html, body {
 }
 
 .debug-mascot-frame {
-  background: #f4f1ec;
+  background: var(--card-bg);
   border-radius: 8px;
   padding: 12px;
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.debug-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-provider {
+  color: var(--debug-label);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.debug-animation {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.debug-mascot-frame svg {
+.debug-animation svg {
   image-rendering: pixelated;
   transform-origin: center;
 }

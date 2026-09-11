@@ -1,0 +1,842 @@
+.codex-logo {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  color: var(--text-primary);
+  overflow: visible;
+}
+
+.codex-engine-base,
+.codex-engine-segment,
+.codex-engine-core,
+.codex-engine-halo,
+.codex-engine-signal {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+
+.codex-engine-base { fill: currentColor; }
+.codex-engine-segment,
+.codex-engine-core,
+.codex-engine-halo,
+.codex-engine-signal { pointer-events: none; }
+.codex-engine-segment { fill: var(--status-working); opacity: 0; }
+.codex-engine-core { opacity: 0; }
+.codex-engine-halo { fill: none; stroke-width: 1.1; opacity: 0; }
+.codex-engine-signal { opacity: 0; transform-origin: 21px 3px; }
+.codex-engine-signal-disc { stroke: var(--card-bg, #fff); stroke-width: 1; }
+.codex-engine-signal-text { fill: #fff; font: 800 5px/1 system-ui, sans-serif; }
+.codex-portal-particles { pointer-events: none; }
+.codex-portal-particle { opacity: 0; }
+.codex-terminal { display: none; pointer-events: none; }
+.codex-glyph { display: none; pointer-events: none; }
+
+/* Working: six sectors fire in sequence while the centre behaves like a
+   power core. The dark base keeps the brand mark readable throughout. */
+.codex-engine[data-status="working"] .codex-engine-base {
+  animation: codex-engine-breathe 1.9s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="working"] .codex-engine-segment {
+  animation: codex-engine-wave 1.35s ease-out infinite;
+  animation-delay: var(--segment-clock);
+}
+.codex-engine[data-status="working"] .codex-engine-core {
+  fill: var(--status-working);
+  animation: codex-engine-core 1.35s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+/* Needs input: one mechanical knock and alert ring, then a quiet pause. */
+.codex-engine[data-status="needsInput"] .codex-engine-base {
+  animation: codex-engine-knock 2.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="needsInput"] .codex-engine-core {
+  fill: var(--status-needs-input);
+  animation: codex-engine-alert-core 2.6s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="needsInput"] .codex-engine-halo {
+  stroke: var(--status-needs-input);
+  animation: codex-engine-alert-ring 2.6s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="needsInput"] .codex-engine-signal {
+  opacity: 1;
+  animation: codex-engine-badge-knock 2.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="needsInput"] .codex-engine-signal-disc { fill: var(--status-needs-input); }
+
+/* A question is calmer than an alert: two blue radar beats, then rest. */
+.codex-engine[data-status="waitingAlert"] .codex-engine-base {
+  animation: codex-engine-question-breathe 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="waitingAlert"] .codex-engine-core {
+  fill: var(--status-question);
+  animation: codex-engine-question-core 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="waitingAlert"] .codex-engine-halo {
+  stroke: var(--status-question);
+  animation: codex-engine-question-ring 3.2s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="waitingAlert"] .codex-engine-signal {
+  opacity: 1;
+  animation: codex-engine-question-badge 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-status="waitingAlert"] .codex-engine-signal-disc { fill: var(--status-question); }
+
+/* Idle only breathes enough to feel alive. */
+.codex-engine[data-status="waiting"] .codex-engine-base {
+  opacity: 0.58;
+  animation: codex-engine-idle 4.8s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@keyframes codex-engine-wave {
+  0%, 55%, 100% { opacity: 0; transform: scale(1); }
+  16% { opacity: 0.72; transform: scale(1.065); }
+  34% { opacity: 0.18; transform: scale(1.02); }
+}
+@keyframes codex-engine-breathe {
+  0%, 100% { transform: scale(0.985); }
+  50% { transform: scale(1.015); }
+}
+@keyframes codex-engine-core {
+  0%, 100% { opacity: 0.45; transform: scale(0.72); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+@keyframes codex-engine-knock {
+  0%, 4%, 12%, 100% { transform: translateX(0); }
+  6% { transform: translateX(-0.7px) rotate(-1.2deg); }
+  9% { transform: translateX(0.7px) rotate(1.2deg); }
+}
+@keyframes codex-engine-alert-core {
+  0% { opacity: 1; transform: scale(0.65); }
+  14% { opacity: 1; transform: scale(1.45); }
+  30%, 100% { opacity: 0.46; transform: scale(0.85); }
+}
+@keyframes codex-engine-alert-ring {
+  0% { opacity: 0.8; transform: scale(0.3); }
+  24% { opacity: 0; transform: scale(1.3); }
+  25%, 100% { opacity: 0; transform: scale(0.3); }
+}
+@keyframes codex-engine-badge-knock {
+  0%, 18%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+  7% { opacity: 1; transform: translateY(-1.2px) scale(1.12); }
+  12% { opacity: 1; transform: translateY(0) scale(0.96); }
+}
+@keyframes codex-engine-question-breathe {
+  0%, 100% { transform: scale(0.99); }
+  22%, 38% { transform: scale(1.018); }
+  30%, 48% { transform: scale(1); }
+}
+@keyframes codex-engine-question-core {
+  0%, 12%, 32%, 100% { opacity: 0.42; transform: scale(0.8); }
+  7%, 25% { opacity: 1; transform: scale(1.22); }
+}
+@keyframes codex-engine-question-ring {
+  0%, 18% { opacity: 0; transform: scale(0.45); }
+  4%, 22% { opacity: 0.62; transform: scale(0.5); }
+  15%, 34% { opacity: 0; transform: scale(1.16); }
+  35%, 100% { opacity: 0; }
+}
+@keyframes codex-engine-question-badge {
+  0%, 36%, 100% { opacity: 0.82; transform: translateY(0); }
+  8%, 25% { opacity: 1; transform: translateY(-0.7px); }
+}
+@keyframes codex-engine-idle {
+  0%, 100% { opacity: 0.54; transform: scale(0.975); }
+  50% { opacity: 0.68; transform: scale(1.015); }
+}
+
+/* Portal study ----------------------------------------------------------
+   An alternate direction used by the animation gallery. Energy is pulled
+   into the mark while working, broadcast out when attention is needed, and
+   collapses into a small aperture at rest. */
+.codex-engine[data-variant="portal"] .codex-engine-segment {
+  fill: var(--status-working);
+}
+
+.codex-engine[data-variant="portal"][data-status="working"] .codex-engine-base {
+  opacity: 0.82;
+  animation: codex-portal-open 2.1s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="working"] .codex-engine-segment {
+  animation: codex-portal-shimmer 2.1s ease-in-out infinite;
+  animation-delay: var(--segment-clock);
+}
+.codex-engine[data-variant="portal"][data-status="working"] .codex-engine-halo {
+  stroke: var(--status-working);
+  animation: codex-portal-rim 2.1s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="working"] .codex-engine-core {
+  fill: var(--status-working);
+  animation: codex-portal-core 1.05s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="working"] .codex-portal-particle {
+  fill: var(--status-working);
+  animation-duration: 1.55s;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+  animation-delay: var(--particle-clock);
+}
+.codex-engine[data-variant="portal"] .codex-portal-particle-1 {
+  animation-name: codex-portal-particle-top;
+}
+.codex-engine[data-variant="portal"] .codex-portal-particle-2 {
+  animation-name: codex-portal-particle-right;
+}
+.codex-engine[data-variant="portal"] .codex-portal-particle-3 {
+  animation-name: codex-portal-particle-left;
+}
+
+.codex-engine[data-variant="portal"][data-status="needsInput"] .codex-engine-base {
+  animation: codex-portal-alert-open 2.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="needsInput"] .codex-engine-halo {
+  stroke: var(--status-needs-input);
+  animation: codex-portal-broadcast 2.6s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="needsInput"] .codex-engine-core {
+  fill: var(--status-needs-input);
+  animation: codex-portal-alert-core 2.6s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="needsInput"] .codex-engine-signal {
+  animation: codex-portal-signal 2.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="portal"][data-status="waitingAlert"] .codex-engine-base {
+  opacity: 0.76;
+  animation: codex-portal-question-open 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="waitingAlert"] .codex-engine-halo {
+  stroke: var(--status-question);
+  animation: codex-portal-question-rim 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="waitingAlert"] .codex-engine-core {
+  fill: var(--status-question);
+  animation: codex-portal-question-core 1.6s steps(2, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="waitingAlert"] .codex-engine-signal {
+  animation: codex-portal-question-signal 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="portal"][data-status="waiting"] .codex-engine-base {
+  opacity: 0.5;
+  animation: codex-portal-sleep 5.4s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="waiting"] .codex-engine-core {
+  fill: #8a8580;
+  opacity: 0.34;
+  animation: codex-portal-sleep-core 5.4s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@keyframes codex-portal-open {
+  0%, 100% { transform: scale(0.96); }
+  50% { transform: scale(1.035); }
+}
+@keyframes codex-portal-shimmer {
+  0%, 48%, 100% { opacity: 0; transform: scale(0.94); }
+  22% { opacity: 0.48; transform: scale(1.015); }
+}
+@keyframes codex-portal-rim {
+  0%, 100% { opacity: 0.18; transform: scale(0.88); }
+  50% { opacity: 0.72; transform: scale(1.02); }
+}
+@keyframes codex-portal-core {
+  0%, 100% { opacity: 0.55; transform: scale(0.75); }
+  50% { opacity: 1; transform: scale(1.4); }
+}
+@keyframes codex-portal-particle-top {
+  0% { opacity: 0; transform: translateY(0) scale(1); }
+  15% { opacity: 0.9; }
+  88% { opacity: 0.7; }
+  100% { opacity: 0; transform: translateY(13px) scale(0.2); }
+}
+@keyframes codex-portal-particle-right {
+  0% { opacity: 0; transform: translateX(0) scale(1); }
+  15% { opacity: 0.9; }
+  88% { opacity: 0.7; }
+  100% { opacity: 0; transform: translateX(-13px) scale(0.2); }
+}
+@keyframes codex-portal-particle-left {
+  0% { opacity: 0; transform: translate(0, 0) scale(1); }
+  15% { opacity: 0.9; }
+  88% { opacity: 0.7; }
+  100% { opacity: 0; transform: translate(11px, -10px) scale(0.2); }
+}
+@keyframes codex-portal-alert-open {
+  0%, 16%, 100% { transform: scale(1); }
+  7% { transform: scale(1.075); }
+}
+@keyframes codex-portal-broadcast {
+  0% { opacity: 0.9; transform: scale(0.35); }
+  28% { opacity: 0; transform: scale(1.38); }
+  29%, 100% { opacity: 0; transform: scale(0.35); }
+}
+@keyframes codex-portal-alert-core {
+  0%, 100% { opacity: 0.45; transform: scale(0.7); }
+  8% { opacity: 1; transform: scale(1.65); }
+  22% { opacity: 0.65; transform: scale(0.9); }
+}
+@keyframes codex-portal-signal {
+  0%, 18%, 100% { opacity: 0.84; transform: scale(0.92); }
+  8% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes codex-portal-question-open {
+  0%, 100% { transform: scale(0.965); }
+  38%, 62% { transform: scale(1.025); }
+}
+@keyframes codex-portal-question-rim {
+  0%, 100% { opacity: 0.18; transform: scale(0.84); }
+  45%, 55% { opacity: 0.68; transform: scale(1.04); }
+}
+@keyframes codex-portal-question-core {
+  0%, 44% { opacity: 0.3; }
+  45%, 100% { opacity: 1; }
+}
+@keyframes codex-portal-question-signal {
+  0%, 100% { opacity: 0.72; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-1px); }
+}
+@keyframes codex-portal-sleep {
+  0%, 100% { opacity: 0.42; transform: scale(0.91); }
+  50% { opacity: 0.55; transform: scale(0.955); }
+}
+@keyframes codex-portal-sleep-core {
+  0%, 100% { opacity: 0.18; transform: scale(0.55); }
+  50% { opacity: 0.42; transform: scale(0.88); }
+}
+
+/* Mini-terminal study ---------------------------------------------------
+   The knot becomes a quiet chassis around a live command prompt. Unlike the
+   abstract motor and portal, every state reads as a terminal interaction. */
+.codex-engine[data-variant="terminal"] .codex-engine-base {
+  opacity: 0.48;
+  transform: scale(0.96);
+  animation: none;
+}
+.codex-engine[data-variant="terminal"] .codex-engine-segment,
+.codex-engine[data-variant="terminal"] .codex-engine-core,
+.codex-engine[data-variant="terminal"] .codex-engine-halo,
+.codex-engine[data-variant="terminal"] .codex-engine-signal {
+  display: none;
+  animation: none;
+}
+.codex-engine[data-variant="terminal"] .codex-terminal {
+  display: block;
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+.codex-terminal-screen {
+  fill: var(--card-bg, #fff);
+  stroke: currentColor;
+  stroke-width: 0.75;
+}
+.codex-terminal-text {
+  fill: currentColor;
+  font: 800 4.2px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: -0.25px;
+}
+.codex-terminal-cursor,
+.codex-terminal-scan { fill: currentColor; }
+.codex-terminal-scan { opacity: 0; }
+
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-terminal {
+  animation: codex-terminal-work 1.8s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-terminal-screen {
+  stroke: var(--status-working);
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-terminal-cursor,
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-terminal-scan {
+  fill: var(--status-working);
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-terminal-cursor {
+  animation: codex-terminal-type 1.8s steps(4, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-terminal-scan {
+  animation: codex-terminal-scan 1.8s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-terminal-screen {
+  stroke: var(--status-needs-input);
+  animation: codex-terminal-alert-screen 2.4s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-terminal-text,
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-terminal-cursor {
+  fill: var(--status-needs-input);
+  animation: codex-terminal-alert-text 1.2s steps(2, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-terminal-screen {
+  stroke: var(--status-question);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-terminal-text,
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-terminal-cursor {
+  fill: var(--status-question);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-terminal-cursor {
+  animation: codex-terminal-question-cursor 1.6s steps(2, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-terminal {
+  animation: codex-terminal-question 3.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-engine-base {
+  opacity: 0.34;
+  transform: scale(0.93);
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-terminal {
+  opacity: 0.58;
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-terminal-cursor {
+  animation: codex-terminal-idle-cursor 2.8s steps(2, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@keyframes codex-terminal-work {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-0.3px); }
+}
+@keyframes codex-terminal-type {
+  0% { transform: translateX(0); opacity: 1; }
+  30% { transform: translateX(1.1px); opacity: 1; }
+  60% { transform: translateX(2.2px); opacity: 1; }
+  78% { transform: translateX(3.2px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes codex-terminal-scan {
+  0%, 15% { opacity: 0; transform: translateY(0); }
+  28% { opacity: 0.75; }
+  65% { opacity: 0.2; transform: translateY(7.5px); }
+  66%, 100% { opacity: 0; transform: translateY(7.5px); }
+}
+@keyframes codex-terminal-alert-screen {
+  0%, 18%, 100% { stroke-width: 0.75; }
+  7% { stroke-width: 1.35; }
+}
+@keyframes codex-terminal-alert-text {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: 0.34; }
+}
+@keyframes codex-terminal-question {
+  0%, 100% { transform: scale(0.98); }
+  50% { transform: scale(1.025); }
+}
+@keyframes codex-terminal-question-cursor {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: 0; }
+}
+@keyframes codex-terminal-idle-cursor {
+  0%, 22% { opacity: 0.55; }
+  23%, 100% { opacity: 0.08; }
+}
+
+/* Existing-glyph study -------------------------------------------------
+   The source logo cuts `>` and `_` out of one compound path. The matching
+   holes are painted closed and redrawn independently for this variant. */
+.codex-engine[data-variant="terminal"] .codex-engine-base {
+  opacity: 1;
+  transform: none;
+}
+.codex-engine[data-variant="terminal"] .codex-glyph {
+  display: block;
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+.codex-glyph-patch { fill: currentColor; }
+.codex-glyph-chevron,
+.codex-glyph-cursor { fill: var(--card-bg, #fff); }
+.codex-glyph-chevron,
+.codex-glyph-cursor {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.codex-glyph-alert-dot {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.codex-glyph-sleep-z {
+  fill: none;
+  stroke: var(--card-bg, #fff);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.codex-glyph-question-mark {
+  opacity: 0;
+  pointer-events: none;
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+.codex-glyph-question-hook {
+  fill: none;
+  stroke: var(--status-question);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.codex-glyph-question-dot {
+  fill: var(--status-question);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.codex-glyph-typing {
+  display: none;
+  pointer-events: none;
+}
+.codex-glyph-type-ribbon {
+  fill: var(--card-bg, #fff);
+  font: 800 4.5px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0;
+  white-space: pre;
+}
+
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-glyph-chevron {
+  fill: var(--card-bg, #fff);
+  animation: codex-glyph-prompt-tap 300ms ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-glyph-cursor {
+  fill: var(--card-bg, #fff);
+  transform-origin: center;
+  animation: codex-glyph-typing-caret 300ms ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-glyph-typing {
+  display: block;
+}
+.codex-engine[data-variant="terminal"][data-status="working"] .codex-glyph-type-ribbon {
+  animation: codex-glyph-type-ribbon 2.4s linear infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph-chevron {
+  fill: #fff;
+  animation: codex-glyph-alert-chevron 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph-cursor {
+  fill: #fff;
+  animation: codex-glyph-alert-cursor 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph-alert-dot {
+  fill: #fff;
+  animation: codex-glyph-alert-dot 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-engine-base,
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph {
+  animation: codex-glyph-alert-body 3s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-engine-halo {
+  display: block;
+  stroke: var(--status-needs-input);
+  animation: codex-glyph-alert-ring 3s ease-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-chevron,
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-cursor {
+  fill: var(--status-question);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-chevron {
+  animation: codex-glyph-question 2.8s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-cursor {
+  animation: codex-glyph-question-cursor 1.4s steps(2, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-engine-base {
+  fill: #8a8580;
+  opacity: 1;
+  transform: none;
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-glyph-patch {
+  fill: #8a8580;
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-glyph-chevron {
+  opacity: 0.58;
+  animation: codex-glyph-rest 4.8s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-glyph-cursor {
+  animation: codex-glyph-idle-cursor 2.8s steps(2, end) infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@keyframes codex-glyph-command {
+  0%, 20%, 100% { transform: translateX(0); }
+  35% { transform: translateX(0.65px); }
+  52% { transform: translateX(0); }
+}
+@keyframes codex-glyph-type {
+  0% { transform: translateX(0); opacity: 1; }
+  28% { transform: translateX(0.65px); opacity: 1; }
+  54% { transform: translateX(1.3px); opacity: 1; }
+  76% { transform: translateX(1.9px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes codex-glyph-prompt-tap {
+  0%, 18%, 44%, 100% { transform: translateX(0); }
+  25% { transform: translateX(0.3px); }
+}
+@keyframes codex-glyph-typing-caret {
+  0%, 68%, 100% {
+    opacity: 1;
+    transform: translate(2px, -2.8px) rotate(-90deg) scaleX(0.72);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(2px, -2.8px) rotate(-90deg) scaleX(0.82);
+  }
+}
+@keyframes codex-glyph-type-ribbon {
+  0%, 9.2% { transform: translateX(0); }
+  12.5%, 21.7% { transform: translateX(-2.7px); }
+  25%, 34.2% { transform: translateX(-5.4px); }
+  37.5%, 46.7% { transform: translateX(-8.1px); }
+  50%, 59.2% { transform: translateX(-10.8px); }
+  62.5%, 71.7% { transform: translateX(-13.5px); }
+  75%, 84.2% { transform: translateX(-16.2px); }
+  87.5%, 96.7% { transform: translateX(-18.9px); }
+  100% { transform: translateX(-21.6px); }
+}
+@keyframes codex-glyph-alert-chevron {
+  0%, 8%, 92%, 100% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  25%, 72% { opacity: 0; transform: translate(4.5px, 5.15px) rotate(90deg) scale(0.12); }
+}
+@keyframes codex-glyph-alert-cursor {
+  0%, 8%, 92%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  25%, 72% { transform: translate(-3.15px, -4.4px) rotate(-90deg) scaleX(1.35); }
+}
+@keyframes codex-glyph-alert-dot {
+  0%, 14%, 84%, 100% { opacity: 0; transform: scale(0.1); }
+  25%, 34% { opacity: 1; transform: scale(1.18); }
+  40%, 72% { opacity: 1; transform: scale(1); }
+}
+@keyframes codex-glyph-alert-body {
+  0%, 24%, 29%, 37%, 47%, 55%, 73%, 100% {
+    transform: translateX(0);
+    filter: none;
+  }
+  25%, 72% {
+    filter: drop-shadow(0 0 1px var(--status-needs-input));
+  }
+  30%, 48% {
+    transform: translateX(-0.55px) rotate(-0.8deg);
+    filter: drop-shadow(0 0 1.8px var(--status-needs-input));
+  }
+  33%, 51% {
+    transform: translateX(0.55px) rotate(0.8deg);
+    filter: drop-shadow(0 0 2.2px var(--status-needs-input));
+  }
+  36%, 54% {
+    transform: translateX(-0.25px);
+    filter: drop-shadow(0 0 1.6px var(--status-needs-input));
+  }
+}
+@keyframes codex-glyph-alert-ring {
+  0%, 25% { opacity: 0; transform: scale(0.38); }
+  29% { opacity: 0.9; transform: scale(0.42); }
+  44% { opacity: 0; transform: scale(1.35); }
+  45%, 48% { opacity: 0; transform: scale(0.38); }
+  52% { opacity: 0.72; transform: scale(0.42); }
+  69% { opacity: 0; transform: scale(1.35); }
+  70%, 100% { opacity: 0; transform: scale(0.38); }
+}
+@keyframes codex-glyph-question {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  42% { transform: rotate(-7deg) translateY(-0.35px); }
+  58% { transform: rotate(5deg) translateY(-0.15px); }
+}
+@keyframes codex-glyph-question-cursor {
+  0%, 48% { opacity: 1; transform: translateY(0); }
+  49%, 100% { opacity: 0.24; transform: translateY(-0.2px); }
+}
+@keyframes codex-glyph-rest {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  50% { transform: rotate(4deg) translateY(0.3px); }
+}
+@keyframes codex-glyph-idle-cursor {
+  0%, 22% { opacity: 0.55; }
+  23%, 100% { opacity: 0.08; }
+}
+
+/* Idle glyph morph: the prompt converges into a large Z, which floats for a
+   beat before the same motion unfolds back into `>_`. */
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-glyph-chevron {
+  animation: codex-glyph-sleep-chevron 5.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-glyph-cursor {
+  animation: codex-glyph-sleep-cursor 5.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waiting"] .codex-glyph-sleep-z {
+  animation: codex-glyph-sleep-z 5.2s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@keyframes codex-glyph-sleep-chevron {
+  0%, 10%, 90%, 100% { opacity: 0.58; transform: translate(0, 0) rotate(0deg) scale(1); }
+  27%, 73% { opacity: 0; transform: translate(4.45px, 0.35px) rotate(-38deg) scale(0.18); }
+}
+@keyframes codex-glyph-sleep-cursor {
+  0%, 10%, 90%, 100% { opacity: 0.55; transform: translate(0, 0) scale(1); }
+  27%, 73% { opacity: 0; transform: translate(-3.15px, -6px) scaleX(1.45); }
+}
+@keyframes codex-glyph-sleep-z {
+  0%, 12%, 88%, 100% {
+    opacity: 0;
+    stroke-dashoffset: 1;
+    transform: translateY(2px) scale(0.55) rotate(0deg);
+  }
+  28% {
+    opacity: 0.57;
+    stroke-dashoffset: 0;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  39% { opacity: 0.57; stroke-dashoffset: 0; transform: translateY(-0.35px) scale(1) rotate(-1.5deg); }
+  51% { opacity: 0.57; stroke-dashoffset: 0; transform: translateY(-1px) scale(1.035) rotate(1deg); }
+  63% { opacity: 0.57; stroke-dashoffset: 0; transform: translateY(-0.35px) scale(1) rotate(-1deg); }
+  72% {
+    opacity: 0.57;
+    stroke-dashoffset: 0;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+/* Ended-with-a-question glyph morph: the prompt converges, the hook is drawn
+   into the centre, then the complete question mark floats before reversing. */
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-chevron {
+  animation: codex-glyph-question-chevron-morph 4.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-cursor {
+  animation: codex-glyph-question-cursor-morph 4.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-question-mark {
+  animation: codex-glyph-question-float 4.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-question-hook {
+  animation: codex-glyph-question-draw 4.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="terminal"][data-status="waitingAlert"] .codex-glyph-question-dot {
+  animation: codex-glyph-question-dot 4.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@keyframes codex-glyph-question-chevron-morph {
+  0%, 10%, 90%, 100% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  27%, 73% { opacity: 0; transform: translate(4.55px, -1px) rotate(-55deg) scale(0.16); }
+}
+@keyframes codex-glyph-question-cursor-morph {
+  0%, 10%, 90%, 100% { opacity: 1; transform: translate(0, 0) scale(1); }
+  27%, 73% { opacity: 0; transform: translate(-2.85px, 2.6px) scale(0.18); }
+}
+@keyframes codex-glyph-question-float {
+  0%, 14%, 86%, 100% { opacity: 0; transform: translateY(1.5px) scale(0.62) rotate(0deg); }
+  28% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+  40% { opacity: 1; transform: translateY(-0.35px) scale(1) rotate(-1.2deg); }
+  52% { opacity: 1; transform: translateY(-0.9px) scale(1.035) rotate(1deg); }
+  64% { opacity: 1; transform: translateY(-0.35px) scale(1) rotate(-0.8deg); }
+  72% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+}
+@keyframes codex-glyph-question-draw {
+  0%, 14%, 86%, 100% { stroke-dashoffset: 1; }
+  28%, 72% { stroke-dashoffset: 0; }
+}
+@keyframes codex-glyph-question-dot {
+  0%, 20%, 80%, 100% { opacity: 0; transform: scale(0.2); }
+  29%, 36% { opacity: 1; transform: scale(1.18); }
+  42%, 72% { opacity: 1; transform: scale(1); }
+}
+
+/* Input is the high-priority state in every direction: a solid red mark with
+   a truly white prompt (not a transparent cut-out that changes by theme). */
+.codex-engine[data-status="needsInput"] .codex-engine-base,
+.codex-engine[data-status="needsInput"] .codex-glyph-patch {
+  fill: var(--status-needs-input);
+  opacity: 1;
+}
+.codex-engine[data-status="needsInput"] .codex-glyph {
+  display: block;
+}
+.codex-engine[data-status="needsInput"] .codex-glyph-chevron,
+.codex-engine[data-status="needsInput"] .codex-glyph-cursor {
+  fill: #fff;
+}
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph-chevron,
+.codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph-cursor {
+  fill: #fff;
+}
+.codex-engine[data-variant="engine"][data-status="needsInput"] .codex-glyph {
+  animation: codex-engine-knock 2.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+.codex-engine[data-variant="portal"][data-status="needsInput"] .codex-glyph {
+  animation: codex-portal-alert-open 2.6s ease-in-out infinite;
+  animation-delay: var(--engine-clock);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-engine * { animation: none !important; }
+  .codex-engine[data-status="working"] .codex-engine-segment { opacity: 0.2; }
+  .codex-engine[data-status="working"] .codex-engine-core,
+  .codex-engine[data-status="needsInput"] .codex-engine-core,
+  .codex-engine[data-status="waitingAlert"] .codex-engine-core { opacity: 1; }
+  .codex-engine[data-status="needsInput"] .codex-engine-signal,
+  .codex-engine[data-status="waitingAlert"] .codex-engine-signal { opacity: 1; }
+  .codex-engine[data-status="waiting"] .codex-engine-base { opacity: 0.58; }
+  .codex-engine[data-variant="portal"][data-status="working"] .codex-engine-halo,
+  .codex-engine[data-variant="portal"][data-status="working"] .codex-engine-core { opacity: 0.75; }
+  .codex-engine[data-variant="portal"][data-status="waiting"] .codex-engine-core { opacity: 0.34; }
+  .codex-engine[data-variant="terminal"] .codex-terminal { opacity: 1; }
+  .codex-engine[data-variant="terminal"][data-status="waiting"] .codex-terminal { opacity: 0.58; }
+  .codex-engine[data-variant="terminal"] .codex-glyph { opacity: 1; }
+  .codex-engine[data-variant="terminal"][data-status="needsInput"] .codex-glyph-alert-dot { opacity: 1; }
+}

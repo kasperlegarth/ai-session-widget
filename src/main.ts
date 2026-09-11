@@ -220,9 +220,8 @@ function render(sessions: SessionInfo[]): void {
     item.title = `${session.provider === "codex" ? "Codex" : "Claude Code"}: ${session.name}\n${session.cwd}`;
 
     const visual = visualStatus(session);
-    const useGlyphAnimation = visual !== "working";
     const mascotEl = session.provider === "codex"
-      ? createCodexLogoElement(visual, useGlyphAnimation ? "terminal" : "engine", session.sessionId)
+      ? createCodexLogoElement(visual, "terminal", session.sessionId)
       : createMascotElement();
     if (session.provider === "claude") mascotEl.classList.add("mascot-svg");
     item.appendChild(mascotEl);

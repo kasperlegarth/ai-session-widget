@@ -7,6 +7,7 @@
 // applies 1:1 to the actual widget — nothing is duplicated or mocked.
 
 import { createMascotElement, mascots, MASCOT_WIDTH, MASCOT_HEIGHT, type MascotStatus } from "./mascot";
+import { createCodexLogoElement } from "./codex-logo";
 
 const MAX_ZOOM = 16;
 
@@ -20,9 +21,29 @@ const STATES: { pid: number; label: string; status: MascotStatus }[] = [
 const stage = document.getElementById("stage") as HTMLDivElement;
 const zoomSlider = document.getElementById("zoom") as HTMLInputElement;
 const zoomValue = document.getElementById("zoom-value") as HTMLSpanElement;
+const themeToggle = document.getElementById("theme-toggle") as HTMLButtonElement;
 
-const svgElements: SVGSVGElement[] = [];
-const frames: HTMLDivElement[] = [];
+themeToggle.addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  themeToggle.textContent = dark ? "Dark mode" : "Light mode";
+});
+
+const previews: { svg: SVGSVGElement; wrapper: HTMLDivElement }[] = [];
+
+function addPreview(frame: HTMLDivElement, label: string, svg: SVGSVGElement): void {
+  const column = document.createElement("div");
+  column.className = "debug-preview";
+  const provider = document.createElement("span");
+  provider.className = "debug-provider";
+  provider.textContent = label;
+  const wrapper = document.createElement("div");
+  wrapper.className = "debug-animation";
+  wrapper.appendChild(svg);
+  column.append(provider, wrapper);
+  frame.appendChild(column);
+  previews.push({ svg, wrapper });
+}
 
 for (const state of STATES) {
   const card = document.createElement("div");
@@ -35,9 +56,10 @@ for (const state of STATES) {
   frame.className = "debug-mascot-frame";
 
   const svg = createMascotElement();
-  frame.appendChild(svg);
-  svgElements.push(svg);
-  frames.push(frame);
+  addPreview(frame, "Claude", svg);
+  addPreview(frame, "Codex motor", createCodexLogoElement(state.status));
+  addPreview(frame, "Codex portal", createCodexLogoElement(state.status, "portal"));
+  addPreview(frame, "Codex >_", createCodexLogoElement(state.status, "terminal"));
 
   card.appendChild(heading);
   card.appendChild(frame);
@@ -49,13 +71,13 @@ for (const state of STATES) {
 zoomSlider.max = String(MAX_ZOOM);
 
 function applyZoom(value: number): void {
-  for (let i = 0; i < svgElements.length; i++) {
-    svgElements[i].style.transform = `scale(${value})`;
+  for (const { svg, wrapper } of previews) {
+    svg.style.transform = `scale(${value})`;
     // Reserve exactly the space this zoom level needs, so cards never
     // overlap their neighbors (CSS transform:scale doesn't affect layout)
     // and scrolling stays proportional to what's actually on screen.
-    frames[i].style.width = `${MASCOT_WIDTH * value}px`;
-    frames[i].style.height = `${MASCOT_HEIGHT * value}px`;
+    wrapper.style.width = `${MASCOT_WIDTH * value}px`;
+    wrapper.style.height = `${MASCOT_HEIGHT * value}px`;
   }
   zoomValue.textContent = `${value}x`;
 }
