@@ -8,7 +8,12 @@ pub struct SessionFile {
     pub session_id: String,
     pub cwd: String,
     pub name: String,
-    pub idle: bool,
+    /// The hook's own status word — "idle", "busy", "waiting" (with a
+    /// `waitingFor` reason, e.g. for an AskUserQuestion prompt), or absent
+    /// entirely for a session whose entrypoint doesn't emit it. Kept as the
+    /// raw string rather than collapsed to a bool so `status::compute_status`
+    /// can trust "waiting" as its own unambiguous signal.
+    pub hook_status: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -54,7 +59,7 @@ pub fn read_sessions_dir(dir: &Path) -> Vec<SessionFile> {
             session_id: raw.session_id,
             cwd: raw.cwd,
             name: raw.name,
-            idle: raw.status.as_deref() == Some("idle"),
+            hook_status: raw.status,
         });
     }
     sessions
@@ -88,11 +93,11 @@ mod tests {
         assert_eq!(result[0].session_id, "abc-123");
         assert_eq!(result[0].cwd, "C:\\Projects\\foo");
         assert_eq!(result[0].name, "foo-1a");
-        assert!(result[0].idle);
+        assert_eq!(result[0].hook_status.as_deref(), Some("idle"));
     }
 
     #[test]
-    fn treats_missing_status_as_not_idle() {
+    fn treats_missing_status_as_none() {
         let dir = tempdir().unwrap();
         write_file(
             dir.path(),
@@ -103,7 +108,7 @@ mod tests {
         let result = read_sessions_dir(dir.path());
 
         assert_eq!(result.len(), 1);
-        assert!(!result[0].idle);
+        assert_eq!(result[0].hook_status, None);
     }
 
     #[test]

@@ -51,28 +51,38 @@ pub fn read_tail_lines(path: &Path, n: usize) -> Vec<String> {
     lines
 }
 
-pub fn compute_status(idle: bool, tail_lines: &[String]) -> SessionStatus {
+pub fn compute_status(hook_status: Option<&str>, tail_lines: &[String]) -> SessionStatus {
+    // A newer hook reports "waiting" (with a `waitingFor` reason, e.g. for
+    // an AskUserQuestion prompt) as its own distinct status, separate from
+    // "idle" — trust it outright rather than trying to (re)derive the same
+    // fact from the transcript tail.
+    if hook_status == Some("waiting") {
+        return SessionStatus::NeedsInput;
+    }
+
+    let idle = hook_status == Some("idle");
+
     if let Some((name, _)) = pending_tool_use(tail_lines) {
         // AskUserQuestion never resolves on its own — it always blocks on a
         // human response — so seeing it pending is unambiguous evidence of
-        // NeedsInput even before the idle-ping hook fires (it apparently
-        // doesn't fire for this tool the way it does for a permission
-        // prompt). An *ordinary* tool call, though, is routinely "pending"
-        // for a moment simply because it's still executing — the gap
-        // between its tool_use being logged and its tool_result following
-        // can outlast one poll interval — so for anything else, only trust
-        // `idle` (handled below) rather than flashing NeedsInput on every
-        // in-flight tool call.
+        // NeedsInput even on an older hook that never sends "waiting" for
+        // it and hasn't marked the session idle either. An *ordinary* tool
+        // call, though, is routinely "pending" for a moment simply because
+        // it's still executing — the gap between its tool_use being logged
+        // and its tool_result following can outlast one poll interval — so
+        // for anything else, only trust `idle` rather than flashing
+        // NeedsInput on every in-flight tool call.
         if name == "AskUserQuestion" || idle {
             return SessionStatus::NeedsInput;
         }
     }
 
     if !idle {
-        // A missing `status:"idle"` field means "hasn't been marked idle
-        // yet", not "is actively working" — a brand-new session (or one
-        // whose entrypoint doesn't emit the idle ping the same way, e.g.
-        // some VS Code-hosted sessions) can sit here indefinitely with no
+        // Anything other than "idle" (missing entirely, "busy", or an
+        // unrecognized future value) means "hasn't been marked idle yet",
+        // not "is actively working" — a brand-new session (or one whose
+        // entrypoint doesn't emit the ping the same way, e.g. some
+        // VS Code-hosted sessions) can sit here indefinitely with no
         // transcript written at all. Only call it Working if the tail
         // actually shows something happened; an empty tail means there's
         // no evidence of activity, so it's more honest to call it Waiting.
@@ -244,7 +254,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(false, &tail);
+        let status = compute_status(None, &tail);
 
         assert_eq!(status, SessionStatus::Working);
     }
@@ -254,8 +264,20 @@ mod tests {
         // A fresh session (or one whose entrypoint never emits the idle
         // ping) can have no transcript at all yet — no evidence of
         // activity means this shouldn't be called Working.
-        let status = compute_status(false, &[]);
+        let status = compute_status(None, &[]);
         assert_eq!(status, SessionStatus::Waiting);
+    }
+
+    #[test]
+    fn needs_input_when_hook_reports_waiting_even_with_no_pending_tool_use_in_tail() {
+        // A newer hook sends "waiting" (with a waitingFor reason) for an
+        // AskUserQuestion prompt instead of "idle" — trust it directly
+        // rather than depending on the transcript tail still containing
+        // the pending tool_use (it may already have scrolled out of the
+        // last-N-lines window by the time this polls).
+        let status = compute_status(Some("waiting"), &[]);
+
+        assert_eq!(status, SessionStatus::NeedsInput);
     }
 
     #[test]
@@ -265,7 +287,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(true, &tail);
+        let status = compute_status(Some("idle"), &tail);
 
         assert_eq!(status, SessionStatus::Waiting);
     }
@@ -277,7 +299,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(true, &tail);
+        let status = compute_status(Some("idle"), &tail);
 
         assert_eq!(status, SessionStatus::NeedsInput);
     }
@@ -292,7 +314,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(false, &tail);
+        let status = compute_status(None, &tail);
 
         assert_eq!(status, SessionStatus::Working);
     }
@@ -308,7 +330,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(false, &tail);
+        let status = compute_status(None, &tail);
 
         assert_eq!(status, SessionStatus::NeedsInput);
     }
@@ -322,7 +344,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(true, &tail);
+        let status = compute_status(Some("idle"), &tail);
 
         assert_eq!(status, SessionStatus::Waiting);
     }
@@ -335,7 +357,7 @@ mod tests {
                 .to_string(),
         ];
 
-        let status = compute_status(true, &tail);
+        let status = compute_status(Some("idle"), &tail);
 
         assert_eq!(status, SessionStatus::Waiting);
     }

@@ -32,7 +32,7 @@ pub fn build_session_list(
                 Some(transcript_path) => read_tail_lines(&transcript_path, 5),
                 None => Vec::new(),
             };
-            let status = compute_status(s.idle, &tail);
+            let status = compute_status(s.hook_status.as_deref(), &tail);
             let activity = extract_activity(status, &tail);
             SessionInfo {
                 provider: "claude",

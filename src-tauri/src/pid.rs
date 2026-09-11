@@ -22,7 +22,7 @@ mod tests {
             session_id: "s".into(),
             cwd: "C:\\x".into(),
             name: "n".into(),
-            idle: false,
+            hook_status: None,
         }
     }
 
