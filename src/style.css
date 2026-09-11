@@ -1,7 +1,6 @@
 :root {
   --bg-app: #f4f1ec;
   --text-primary: #2c2a28;
-  --drag-bg: rgba(0, 0, 0, 0.04);
   --drag-handle: rgba(0, 0, 0, 0.15);
   --card-bg: #ffffff;
   --card-border: rgba(0, 0, 0, 0.06);
@@ -10,6 +9,9 @@
   --card-shadow-2: rgba(0, 0, 0, 0.04);
   --text-muted: #8a8580;
   --text-idle: #57534e;
+  --status-working: #16a34a;
+  --status-needs-input: #dc2626;
+  --status-question: #2563eb;
   --menu-bg: #ffffff;
   --menu-border: rgba(0, 0, 0, 0.08);
   --menu-shadow: rgba(0, 0, 0, 0.12);
@@ -22,7 +24,6 @@
 [data-theme="dark"] {
   --bg-app: #2a2825;
   --text-primary: #eae6e0;
-  --drag-bg: rgba(255, 255, 255, 0.06);
   --drag-handle: rgba(255, 255, 255, 0.2);
   --card-bg: #38352f;
   --card-border: rgba(255, 255, 255, 0.07);
@@ -31,6 +32,9 @@
   --card-shadow-2: rgba(0, 0, 0, 0.3);
   --text-muted: #a49d92;
   --text-idle: #bab2a4;
+  --status-working: #4ade80;
+  --status-needs-input: #f05252;
+  --status-question: #60a5fa;
   --menu-bg: #38352f;
   --menu-border: rgba(255, 255, 255, 0.1);
   --menu-shadow: rgba(0, 0, 0, 0.35);
@@ -67,7 +71,6 @@ html, body {
   height: 14px;
   margin-bottom: 4px;
   border-radius: 10px 10px 0 0;
-  background: var(--drag-bg);
   cursor: move;
   position: relative;
 }
@@ -82,6 +85,61 @@ html, body {
   border-radius: 1px;
   background: var(--drag-handle);
   transform: translate(-50%, -50%);
+}
+
+#usage-bar {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  font-size: 11px;
+}
+
+/* Each metric shrinks (not wraps) when the window gets narrow, so the bar
+   always stays a single line — a value that no longer fits is ellipsized
+   rather than pushed onto its own row. */
+.usage-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.usage-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.usage-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#orphan-warning {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--status-needs-input);
+  color: var(--status-needs-input);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
 }
 
 #session-list {
@@ -99,6 +157,11 @@ body[data-size-mode="manual"] #app {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+body[data-size-mode="manual"] #usage-bar,
+body[data-size-mode="manual"] #orphan-warning {
+  margin-right: 8px;
 }
 
 body[data-size-mode="manual"] #session-list {
@@ -161,13 +224,6 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
   flex: 1;
 }
 
-.codex-logo {
-  flex-shrink: 0;
-  width: 72px;
-  height: 72px;
-  color: var(--text-primary);
-}
-
 .session-name {
   font-weight: 600;
   font-size: 12px;
@@ -193,11 +249,11 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
 }
 
 .status-dot-working {
-  background: #16a34a;
+  background: var(--status-working);
 }
 
 .status-dot-needsInput {
-  background: #dc2626;
+  background: var(--status-needs-input);
 }
 
 .status-dot-waiting {
@@ -205,7 +261,7 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
 }
 
 .status-dot-waitingAlert {
-  background: #2563eb;
+  background: var(--status-question);
 }
 
 .session-status {
@@ -217,11 +273,11 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
 }
 
 .status-text-working {
-  color: #16a34a;
+  color: var(--status-working);
 }
 
 .status-text-needsInput {
-  color: #dc2626;
+  color: var(--status-needs-input);
 }
 
 .status-text-waiting {
@@ -229,7 +285,7 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
 }
 
 .status-text-waitingAlert {
-  color: #2563eb;
+  color: var(--status-question);
 }
 
 .session-activity {

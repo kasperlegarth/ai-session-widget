@@ -1,27 +1,44 @@
 use crate::codex::CodexSessions;
-use crate::model::{build_session_list, SessionInfo};
+use crate::model::build_session_list;
 use crate::pid::is_pid_alive;
+use crate::usage::{
+    find_runaway_orphans, sum_session_usage, total_disk_bytes, ProcSample, ResourceUsage,
+    SessionsPayload,
+};
 use std::sync::{Mutex, OnceLock};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+use sysinfo::{ProcessesToUpdate, System};
 
 static CODEX: OnceLock<Mutex<CodexSessions>> = OnceLock::new();
+static SYSTEM: OnceLock<Mutex<System>> = OnceLock::new();
 
 #[tauri::command]
-pub async fn get_sessions() -> Vec<SessionInfo> {
+pub async fn get_sessions() -> SessionsPayload {
     tauri::async_runtime::spawn_blocking(collect_sessions)
         .await
-        .unwrap_or_default()
+        .unwrap_or(SessionsPayload {
+            sessions: Vec::new(),
+            usage: ResourceUsage::default(),
+        })
 }
 
-fn collect_sessions() -> Vec<SessionInfo> {
+fn collect_sessions() -> SessionsPayload {
     let Some(home) = dirs::home_dir() else {
-        return Vec::new();
+        return SessionsPayload {
+            sessions: Vec::new(),
+            usage: ResourceUsage::default(),
+        };
     };
     let sessions_dir = home.join(".claude").join("sessions");
     let projects_dir = home.join(".claude").join("projects");
 
-    let sys =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+    // Kept alive across polls (rather than recreated each call) so sysinfo
+    // has a prior sample to diff against — per-process CPU% is a delta since
+    // the last refresh, and is meaningless (reads as 0) on a brand-new
+    // System with nothing to compare to.
+    let mut sys = SYSTEM.get_or_init(|| Mutex::new(System::new_all())).lock().unwrap_or_else(|e| e.into_inner());
+    sys.refresh_cpu_all();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+    sys.refresh_memory();
 
     let mut sessions =
         build_session_list(&sessions_dir, &projects_dir, |pid| is_pid_alive(&sys, pid));
@@ -39,7 +56,36 @@ fn collect_sessions() -> Vec<SessionInfo> {
             })
         }));
     }
-    sessions
+
+    let procs: Vec<ProcSample> = sys
+        .processes()
+        .values()
+        .map(|p| {
+            let disk = p.disk_usage();
+            ProcSample {
+                pid: p.pid().as_u32(),
+                parent: p.parent().map(|pp| pp.as_u32()),
+                name: p.name().to_string_lossy().into_owned(),
+                cpu_percent: p.cpu_usage(),
+                memory_bytes: p.memory(),
+                disk_bytes: disk.read_bytes + disk.written_bytes,
+            }
+        })
+        .collect();
+    let root_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
+    let totals = sum_session_usage(&procs, &root_pids, sys.cpus().len());
+
+    let usage = ResourceUsage {
+        session_cpu_percent: totals.cpu_percent,
+        total_cpu_percent: sys.global_cpu_usage(),
+        session_memory_bytes: totals.memory_bytes,
+        total_memory_bytes: sys.total_memory(),
+        session_disk_bytes: totals.disk_bytes,
+        total_disk_bytes: total_disk_bytes(&procs),
+        orphaned_processes: find_runaway_orphans(&procs),
+    };
+
+    SessionsPayload { sessions, usage }
 }
 
 #[tauri::command]

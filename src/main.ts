@@ -99,6 +99,28 @@ interface SessionInfo {
   activity: string | null;
 }
 
+interface OrphanProcess {
+  pid: number;
+  name: string;
+  cpuPercent: number;
+  diskBytes: number;
+}
+
+interface ResourceUsage {
+  sessionCpuPercent: number;
+  totalCpuPercent: number;
+  sessionMemoryBytes: number;
+  totalMemoryBytes: number;
+  sessionDiskBytes: number;
+  totalDiskBytes: number;
+  orphanedProcesses: OrphanProcess[];
+}
+
+interface SessionsPayload {
+  sessions: SessionInfo[];
+  usage: ResourceUsage;
+}
+
 // "waitingAlert" is a frontend-only presentation variant: a plain "waiting"
 // session whose last message read like a question gets a distinct color and
 // mascot animation from an ordinary finished/idle "waiting" session, even
@@ -133,6 +155,53 @@ function statusLabel(status: MascotStatus): string {
   }
 }
 
+const usageCpuEl = document.getElementById("usage-cpu") as HTMLSpanElement;
+const usageMemEl = document.getElementById("usage-mem") as HTMLSpanElement;
+const usageDiskEl = document.getElementById("usage-disk") as HTMLSpanElement;
+const orphanWarningEl = document.getElementById("orphan-warning") as HTMLDivElement;
+
+function formatPercent(value: number): string {
+  return `${Math.round(value)}%`;
+}
+
+function formatBytes(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+function formatBytesPerSec(bytesPerPoll: number): string {
+  const bytesPerSec = bytesPerPoll / (POLL_INTERVAL_MS / 1000);
+  const mbPerSec = bytesPerSec / 1024 ** 2;
+  if (mbPerSec >= 1) return `${mbPerSec.toFixed(1)} MB/s`;
+  return `${Math.round(bytesPerSec / 1024)} KB/s`;
+}
+
+function renderUsage(usage: ResourceUsage): void {
+  usageCpuEl.textContent = `${formatPercent(usage.sessionCpuPercent)} / ${formatPercent(usage.totalCpuPercent)}`;
+  const memPercent = usage.totalMemoryBytes > 0 ? (usage.sessionMemoryBytes / usage.totalMemoryBytes) * 100 : 0;
+  usageMemEl.textContent = `${formatBytes(usage.sessionMemoryBytes)} (${formatPercent(memPercent)})`;
+  const diskPercent = usage.totalDiskBytes > 0 ? (usage.sessionDiskBytes / usage.totalDiskBytes) * 100 : 0;
+  usageDiskEl.textContent = `${formatBytesPerSec(usage.sessionDiskBytes)} (${formatPercent(diskPercent)})`;
+  renderOrphanWarning(usage.orphanedProcesses);
+}
+
+// Flags processes left behind by a tool call whose parent shell has already
+// exited (e.g. a backgrounded `find /` that timed out and was never killed)
+// — see usage.rs::find_runaway_orphans for the detection rule.
+function renderOrphanWarning(orphans: OrphanProcess[]): void {
+  if (orphans.length === 0) {
+    orphanWarningEl.hidden = true;
+    return;
+  }
+  orphanWarningEl.hidden = false;
+  const noun = orphans.length === 1 ? "forældreløs proces" : "forældreløse processer";
+  orphanWarningEl.textContent = `⚠ ${orphans.length} ${noun} kører stadig`;
+  orphanWarningEl.title = orphans
+    .map((o) => `${o.name} (PID ${o.pid}, ${Math.round(o.cpuPercent)}% CPU)`)
+    .join("\n");
+}
+
 function render(sessions: SessionInfo[]): void {
   listEl.innerHTML = "";
 
@@ -150,7 +219,11 @@ function render(sessions: SessionInfo[]): void {
     item.className = "session-card";
     item.title = `${session.provider === "codex" ? "Codex" : "Claude Code"}: ${session.name}\n${session.cwd}`;
 
-    const mascotEl = session.provider === "codex" ? createCodexLogoElement() : createMascotElement();
+    const visual = visualStatus(session);
+    const useGlyphAnimation = visual !== "working";
+    const mascotEl = session.provider === "codex"
+      ? createCodexLogoElement(visual, useGlyphAnimation ? "terminal" : "engine", session.sessionId)
+      : createMascotElement();
     if (session.provider === "claude") mascotEl.classList.add("mascot-svg");
     item.appendChild(mascotEl);
 
@@ -163,8 +236,6 @@ function render(sessions: SessionInfo[]): void {
 
     const statusRow = document.createElement("span");
     statusRow.className = "session-status-row";
-
-    const visual = visualStatus(session);
 
     const statusDot = document.createElement("span");
     statusDot.className = `status-dot status-dot-${visual}`;
@@ -240,19 +311,31 @@ const DEMO_SESSIONS: SessionInfo[] = [
   demoSession(-11, "idle-plain", "waiting", null),
 ];
 
+const DEMO_USAGE: ResourceUsage = {
+  sessionCpuPercent: 34,
+  totalCpuPercent: 61,
+  sessionMemoryBytes: 1_200_000_000,
+  totalMemoryBytes: 17_000_000_000,
+  sessionDiskBytes: 2_400_000,
+  totalDiskBytes: 40_000_000,
+  orphanedProcesses: [],
+};
+
 let refreshing = false;
 
 async function refresh(): Promise<void> {
   if (refreshing) return;
   if (DEMO_MODE) {
     render(DEMO_SESSIONS);
+    renderUsage(DEMO_USAGE);
     await resizeWindowToContent();
     return;
   }
   refreshing = true;
   try {
-    const sessions = await invoke<SessionInfo[]>("get_sessions");
-    render(sessions);
+    const payload = await invoke<SessionsPayload>("get_sessions");
+    render(payload.sessions);
+    renderUsage(payload.usage);
     await resizeWindowToContent();
   } catch (err) {
     console.error("Failed to refresh sessions", err);

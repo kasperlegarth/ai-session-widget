@@ -18,6 +18,21 @@
     </div>
     <div id="app">
       <div id="drag-region" data-tauri-drag-region></div>
+      <div id="usage-bar">
+        <span class="usage-metric">
+          <span class="usage-label">CPU</span>
+          <span class="usage-value" id="usage-cpu">–</span>
+        </span>
+        <span class="usage-metric">
+          <span class="usage-label">RAM</span>
+          <span class="usage-value" id="usage-mem">–</span>
+        </span>
+        <span class="usage-metric">
+          <span class="usage-label">Disk</span>
+          <span class="usage-value" id="usage-disk">–</span>
+        </span>
+      </div>
+      <div id="orphan-warning" hidden></div>
       <ul id="session-list"></ul>
       <div id="context-menu" class="context-menu" hidden>
         <div class="context-menu-item" id="menu-always-on-top">

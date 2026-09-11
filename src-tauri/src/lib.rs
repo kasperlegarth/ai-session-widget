@@ -8,6 +8,7 @@ mod pid;
 mod status;
 mod model;
 mod focus;
+mod usage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
