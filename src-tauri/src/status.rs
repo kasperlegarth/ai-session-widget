@@ -52,6 +52,22 @@ pub fn read_tail_lines(path: &Path, n: usize) -> Vec<String> {
 }
 
 pub fn compute_status(idle: bool, tail_lines: &[String]) -> SessionStatus {
+    if let Some((name, _)) = pending_tool_use(tail_lines) {
+        // AskUserQuestion never resolves on its own — it always blocks on a
+        // human response — so seeing it pending is unambiguous evidence of
+        // NeedsInput even before the idle-ping hook fires (it apparently
+        // doesn't fire for this tool the way it does for a permission
+        // prompt). An *ordinary* tool call, though, is routinely "pending"
+        // for a moment simply because it's still executing — the gap
+        // between its tool_use being logged and its tool_result following
+        // can outlast one poll interval — so for anything else, only trust
+        // `idle` (handled below) rather than flashing NeedsInput on every
+        // in-flight tool call.
+        if name == "AskUserQuestion" || idle {
+            return SessionStatus::NeedsInput;
+        }
+    }
+
     if !idle {
         // A missing `status:"idle"` field means "hasn't been marked idle
         // yet", not "is actively working" — a brand-new session (or one
@@ -66,44 +82,7 @@ pub fn compute_status(idle: bool, tail_lines: &[String]) -> SessionStatus {
         return SessionStatus::Working;
     }
 
-    let mut pending_tool_use_ids: Vec<String> = Vec::new();
-
-    for line in tail_lines {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let msg_type = value.get("type").and_then(Value::as_str).unwrap_or("");
-        if msg_type != "assistant" && msg_type != "user" {
-            continue;
-        }
-        let Some(content) = value
-            .pointer("/message/content")
-            .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for item in content {
-            match item.get("type").and_then(Value::as_str) {
-                Some("tool_use") => {
-                    if let Some(id) = item.get("id").and_then(Value::as_str) {
-                        pending_tool_use_ids.push(id.to_string());
-                    }
-                }
-                Some("tool_result") => {
-                    if let Some(id) = item.get("tool_use_id").and_then(Value::as_str) {
-                        pending_tool_use_ids.retain(|pending| pending != id);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    if pending_tool_use_ids.is_empty() {
-        SessionStatus::Waiting
-    } else {
-        SessionStatus::NeedsInput
-    }
+    SessionStatus::Waiting
 }
 
 /// Human-readable label for a tool call, based on its name and (best-effort)
@@ -299,6 +278,37 @@ mod tests {
         ];
 
         let status = compute_status(true, &tail);
+
+        assert_eq!(status, SessionStatus::NeedsInput);
+    }
+
+    #[test]
+    fn working_not_needs_input_when_an_ordinary_tool_use_is_still_in_flight() {
+        // An auto-approved tool call is briefly "pending" between its
+        // tool_use being logged and its tool_result following — that's just
+        // normal execution, not a block, and shouldn't flash NeedsInput.
+        let tail = vec![
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash"}]}}"#
+                .to_string(),
+        ];
+
+        let status = compute_status(false, &tail);
+
+        assert_eq!(status, SessionStatus::Working);
+    }
+
+    #[test]
+    fn needs_input_when_not_idle_but_last_tool_use_has_no_result() {
+        // Some interactive tools (AskUserQuestion in particular) block on
+        // user input without the idle-ping hook having fired — the
+        // transcript already shows a pending tool_use, and that should win
+        // over the not-idle default of Working.
+        let tail = vec![
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"AskUserQuestion"}]}}"#
+                .to_string(),
+        ];
+
+        let status = compute_status(false, &tail);
 
         assert_eq!(status, SessionStatus::NeedsInput);
     }
