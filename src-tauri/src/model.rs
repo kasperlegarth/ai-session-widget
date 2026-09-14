@@ -2,8 +2,10 @@ use crate::pid::filter_alive;
 use crate::sessions::{project_dir_for_cwd, read_sessions_dir};
 use crate::status::{compute_status, extract_activity, read_tail_lines, SessionStatus};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +49,12 @@ pub fn build_session_list(
         .collect()
 }
 
+/// Caches the fallback-scan result of `resolve_transcript_path`, keyed by
+/// session id, so a session whose project dir name doesn't match the derived
+/// scheme doesn't pay for a full `read_dir` of `projects_dir` on every 2s
+/// poll for its entire lifetime.
+static FALLBACK_TRANSCRIPT_PATHS: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+
 /// Resolves the transcript file path for a session. Tries the fast path derived
 /// directly from `cwd` first; if that doesn't exist (e.g. the derivation scheme
 /// doesn't match how Claude Code actually named the project dir), falls back to
@@ -59,10 +67,21 @@ fn resolve_transcript_path(projects_dir: &Path, cwd: &str, session_id: &str) -> 
         return Some(derived);
     }
 
+    let cache = FALLBACK_TRANSCRIPT_PATHS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(cached) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(session_id) {
+        if cached.exists() {
+            return Some(cached.clone());
+        }
+    }
+
     let entries = fs::read_dir(projects_dir).ok()?;
     for entry in entries.flatten() {
         let candidate = entry.path().join(format!("{session_id}.jsonl"));
         if candidate.exists() {
+            cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(session_id.to_string(), candidate.clone());
             return Some(candidate);
         }
     }
