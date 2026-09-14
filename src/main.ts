@@ -252,72 +252,149 @@ function renderOrphanWarning(rawOrphans: OrphanProcess[]): void {
     .join("\n");
 }
 
-function render(sessions: SessionInfo[]): void {
-  listEl.innerHTML = "";
+interface SessionRow {
+  li: HTMLLIElement;
+  mascotEl: SVGSVGElement;
+  text: HTMLDivElement;
+  dir: HTMLSpanElement;
+  statusDot: HTMLSpanElement;
+  statusText: HTMLSpanElement;
+  activityEl: HTMLSpanElement | null;
+  provider: SessionInfo["provider"];
+  visual: MascotStatus;
+  session: SessionInfo;
+}
 
+const sessionRows = new Map<string, SessionRow>();
+let emptyStateEl: HTMLLIElement | null = null;
+
+function buildSessionRow(session: SessionInfo, visual: MascotStatus): SessionRow {
+  const li = document.createElement("li");
+  li.className = "session-card";
+
+  const mascotEl = session.provider === "codex"
+    ? createCodexLogoElement(visual, "terminal", session.sessionId)
+    : createMascotElement();
+  if (session.provider === "claude") mascotEl.classList.add("mascot-svg");
+  li.appendChild(mascotEl);
+
+  const text = document.createElement("div");
+  text.className = "session-text";
+
+  const dir = document.createElement("span");
+  dir.className = "session-name";
+  text.appendChild(dir);
+
+  const statusRow = document.createElement("span");
+  statusRow.className = "session-status-row";
+  const statusDot = document.createElement("span");
+  const statusText = document.createElement("span");
+  statusRow.append(statusDot, statusText);
+  text.appendChild(statusRow);
+
+  li.appendChild(text);
+
+  const row: SessionRow = {
+    li,
+    mascotEl,
+    text,
+    dir,
+    statusDot,
+    statusText,
+    activityEl: null,
+    provider: session.provider,
+    visual,
+    session,
+  };
+
+  li.addEventListener("click", () => {
+    if (row.session.pid <= 0) return; // unknown owner or demo row
+    // hint disambiguates between several windows sharing one process id
+    // (e.g. multiple separate Windows Terminal windows) — see focus.rs.
+    void invoke("focus_session", { pid: row.session.pid, hint: lastPathSegment(row.session.cwd) });
+  });
+
+  return row;
+}
+
+// Session cards are patched in place across polls instead of being torn
+// down and rebuilt from scratch — the Claude mascot's "working"/
+// "waitingAlert" states are SMIL-animated external SVGs whose timeline
+// lives on the DOM element itself, so recreating the element every poll
+// restarted the animation from frame 0 before it ever finished playing.
+function render(sessions: SessionInfo[]): void {
   if (sessions.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "empty-state";
-    empty.textContent = "Ingen aktive sessioner";
-    listEl.appendChild(empty);
+    for (const row of sessionRows.values()) row.li.remove();
+    sessionRows.clear();
+    if (!emptyStateEl) {
+      emptyStateEl = document.createElement("li");
+      emptyStateEl.className = "empty-state";
+      emptyStateEl.textContent = "Ingen aktive sessioner";
+    }
+    listEl.appendChild(emptyStateEl);
     mascots.prune(new Set());
     return;
   }
 
+  if (emptyStateEl) {
+    emptyStateEl.remove();
+    emptyStateEl = null;
+  }
+
+  const wantedKeys = new Set<string>();
+
   for (const session of sessions) {
-    const item = document.createElement("li");
-    item.className = "session-card";
-    item.title = `${session.provider === "codex" ? "Codex" : "Claude Code"}: ${session.name}\n${session.cwd}`;
-
+    const key = `${session.provider}:${session.sessionId}`;
+    wantedKeys.add(key);
     const visual = visualStatus(session);
-    const mascotEl = session.provider === "codex"
-      ? createCodexLogoElement(visual, "terminal", session.sessionId)
-      : createMascotElement();
-    if (session.provider === "claude") mascotEl.classList.add("mascot-svg");
-    item.appendChild(mascotEl);
+    let row = sessionRows.get(key);
 
-    const text = document.createElement("div");
-    text.className = "session-text";
-
-    const dir = document.createElement("span");
-    dir.className = "session-name";
-    dir.textContent = lastPathSegment(session.cwd);
-
-    const statusRow = document.createElement("span");
-    statusRow.className = "session-status-row";
-
-    const statusDot = document.createElement("span");
-    statusDot.className = `status-dot status-dot-${visual}`;
-
-    const statusText = document.createElement("span");
-    statusText.className = `session-status status-text-${visual}`;
-    statusText.textContent = statusLabel(visual);
-
-    statusRow.appendChild(statusDot);
-    statusRow.appendChild(statusText);
-
-    text.appendChild(dir);
-    text.appendChild(statusRow);
-
-    if (session.activity) {
-      const activity = document.createElement("span");
-      activity.className = "session-activity";
-      activity.textContent = session.activity;
-      text.appendChild(activity);
+    if (!row) {
+      row = buildSessionRow(session, visual);
+      sessionRows.set(key, row);
+    } else {
+      row.session = session;
+      // Codex's mark bakes status into its markup at construction time
+      // (signal glyph, aria-label); Claude's rig is one fixed SVG whose
+      // visibility groups update reactively (see mascot.ts::update), so it
+      // never needs rebuilding.
+      if (row.provider === "codex" && row.visual !== visual) {
+        const freshMascot = createCodexLogoElement(visual, "terminal", session.sessionId);
+        row.li.replaceChild(freshMascot, row.mascotEl);
+        row.mascotEl = freshMascot;
+      }
+      row.visual = visual;
     }
 
-    item.appendChild(text);
+    row.li.title = `${session.provider === "codex" ? "Codex" : "Claude Code"}: ${session.name}\n${session.cwd}`;
+    row.dir.textContent = lastPathSegment(session.cwd);
+    row.statusDot.className = `status-dot status-dot-${visual}`;
+    row.statusText.className = `session-status status-text-${visual}`;
+    row.statusText.textContent = statusLabel(visual);
 
-    item.addEventListener("click", () => {
-      if (session.pid <= 0) return; // unknown owner or demo row
-      // hint disambiguates between several windows sharing one process id
-      // (e.g. multiple separate Windows Terminal windows) — see focus.rs.
-      void invoke("focus_session", { pid: session.pid, hint: lastPathSegment(session.cwd) });
-    });
+    if (session.activity) {
+      if (!row.activityEl) {
+        row.activityEl = document.createElement("span");
+        row.activityEl.className = "session-activity";
+        row.text.appendChild(row.activityEl);
+      }
+      row.activityEl.textContent = session.activity;
+    } else if (row.activityEl) {
+      row.activityEl.remove();
+      row.activityEl = null;
+    }
 
-    listEl.appendChild(item);
-    if (session.provider === "claude") {
-      mascots.set(`${session.provider}:${session.sessionId}`, mascotEl, visual);
+    if (row.provider === "claude") {
+      mascots.set(key, row.mascotEl, visual);
+    }
+
+    listEl.appendChild(row.li); // appendChild on an existing child reorders it in place
+  }
+
+  for (const [key, row] of sessionRows) {
+    if (!wantedKeys.has(key)) {
+      row.li.remove();
+      sessionRows.delete(key);
     }
   }
 
