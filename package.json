@@ -7,7 +7,7 @@
   "author": "Kasper Legarth",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kasperlegarth/claude-widget.git"
+    "url": "https://github.com/kasperlegarth/ai-session-widget.git"
   },
   "type": "module",
   "scripts": {

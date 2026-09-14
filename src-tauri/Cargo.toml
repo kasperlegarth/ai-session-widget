@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "AI Session Widget — shows running Claude Code and Codex sessions at a glance"
 authors = ["Kasper Legarth"]
 license = "MIT"
-repository = "https://github.com/kasperlegarth/claude-widget"
+repository = "https://github.com/kasperlegarth/ai-session-widget"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
