@@ -143,9 +143,12 @@ const WATCHED_ORPHAN_NAMES: &[&str] = &[
 
 /// A process only really matters once it's used a noticeable amount of CPU
 /// or disk since the last poll — a merely-orphaned-but-idle process is
-/// harmless and not worth surfacing.
-const MIN_CPU_PERCENT: f32 = 0.1;
-const MIN_DISK_BYTES: u64 = 1024;
+/// harmless and not worth surfacing. Set well above single-poll noise (a
+/// stray page fault or filesystem flush) so a process has to be genuinely
+/// busy, not just alive, to get flagged — the frontend adds its own
+/// multi-poll confirmation on top of this.
+const MIN_CPU_PERCENT: f32 = 1.0;
+const MIN_DISK_BYTES: u64 = 64 * 1024;
 
 /// Finds processes whose parent is no longer running (Windows never
 /// reparents orphans the way Unix inits do — the PPID just points at a PID
@@ -290,7 +293,7 @@ mod tests {
 
     #[test]
     fn flags_watched_process_with_dead_parent_and_active_disk_but_no_cpu() {
-        let procs = vec![named_proc(1, Some(999), "find.exe", 0.0, 0, 50_000)];
+        let procs = vec![named_proc(1, Some(999), "find.exe", 0.0, 0, 100_000)];
 
         let orphans = find_runaway_orphans(&procs);
 

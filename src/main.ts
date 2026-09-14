@@ -186,10 +186,60 @@ function renderUsage(usage: ResourceUsage): void {
   renderOrphanWarning(usage.orphanedProcesses);
 }
 
+// A PID must show up in this many consecutive polls before it's trusted
+// enough to surface, and vanish for this many consecutive polls before it's
+// cleared — otherwise a single noisy or missed sample makes the banner flap
+// on and off (see usage.rs::find_runaway_orphans for the underlying
+// per-poll detection this smooths over).
+const ORPHAN_CONFIRM_POLLS = 3;
+const ORPHAN_CLEAR_POLLS = 2;
+
+interface TrackedOrphan {
+  process: OrphanProcess;
+  presentStreak: number;
+  absentStreak: number;
+  confirmed: boolean;
+}
+
+const trackedOrphans = new Map<number, TrackedOrphan>();
+
+function updateOrphanTracking(orphans: OrphanProcess[]): OrphanProcess[] {
+  const seenPids = new Set(orphans.map((o) => o.pid));
+
+  for (const orphan of orphans) {
+    const tracked = trackedOrphans.get(orphan.pid);
+    if (tracked) {
+      tracked.process = orphan;
+      tracked.absentStreak = 0;
+      tracked.presentStreak += 1;
+      if (tracked.presentStreak >= ORPHAN_CONFIRM_POLLS) tracked.confirmed = true;
+    } else {
+      trackedOrphans.set(orphan.pid, {
+        process: orphan,
+        presentStreak: 1,
+        absentStreak: 0,
+        confirmed: ORPHAN_CONFIRM_POLLS <= 1,
+      });
+    }
+  }
+
+  for (const [pid, tracked] of trackedOrphans) {
+    if (seenPids.has(pid)) continue;
+    tracked.presentStreak = 0;
+    tracked.absentStreak += 1;
+    if (tracked.absentStreak >= ORPHAN_CLEAR_POLLS) {
+      trackedOrphans.delete(pid);
+    }
+  }
+
+  return [...trackedOrphans.values()].filter((t) => t.confirmed).map((t) => t.process);
+}
+
 // Flags processes left behind by a tool call whose parent shell has already
 // exited (e.g. a backgrounded `find /` that timed out and was never killed)
 // — see usage.rs::find_runaway_orphans for the detection rule.
-function renderOrphanWarning(orphans: OrphanProcess[]): void {
+function renderOrphanWarning(rawOrphans: OrphanProcess[]): void {
+  const orphans = updateOrphanTracking(rawOrphans);
   if (orphans.length === 0) {
     orphanWarningEl.hidden = true;
     return;
