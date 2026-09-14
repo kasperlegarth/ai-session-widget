@@ -245,8 +245,8 @@ function renderOrphanWarning(rawOrphans: OrphanProcess[]): void {
     return;
   }
   orphanWarningEl.hidden = false;
-  const noun = orphans.length === 1 ? "forældreløs proces" : "forældreløse processer";
-  orphanWarningEl.textContent = `⚠ ${orphans.length} ${noun} kører stadig`;
+  const noun = orphans.length === 1 ? "orphaned process" : "orphaned processes";
+  orphanWarningEl.textContent = `⚠ ${orphans.length} ${noun} still running`;
   orphanWarningEl.title = orphans
     .map((o) => `${o.name} (PID ${o.pid}, ${Math.round(o.cpuPercent)}% CPU)`)
     .join("\n");
@@ -329,7 +329,7 @@ function render(sessions: SessionInfo[]): void {
     if (!emptyStateEl) {
       emptyStateEl = document.createElement("li");
       emptyStateEl.className = "empty-state";
-      emptyStateEl.textContent = "Ingen aktive sessioner";
+      emptyStateEl.textContent = "No active sessions";
     }
     listEl.appendChild(emptyStateEl);
     mascots.prune(new Set());

@@ -298,7 +298,7 @@ const HIGHLIGHT_THICKNESS: i32 = 6;
 // chosen to stand out against both light and dark terminal themes.
 const HIGHLIGHT_COLOR: COLORREF = COLORREF(0x00_00_8C_FF);
 
-const OVERLAY_CLASS_NAME: windows::core::PCWSTR = w!("ClawdFocusHighlightOverlay");
+const OVERLAY_CLASS_NAME: windows::core::PCWSTR = w!("AiSessionWidgetFocusHighlightOverlay");
 
 unsafe extern "system" fn overlay_wndproc(
     hwnd: HWND,

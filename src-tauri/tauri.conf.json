@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Clawd Session Widget",
+  "productName": "AI Session Widget",
   "version": "0.1.0",
-  "identifier": "com.kaspe.clawd-session-widget",
+  "identifier": "com.kasperlegarth.ai-session-widget",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Claude Sessions",
+        "title": "AI Session Widget",
         "width": 340,
         "height": 480,
         "decorations": false,

@@ -1,8 +1,10 @@
 [package]
-name = "tauri-app"
+name = "ai-session-widget"
 version = "0.1.0"
-description = "Clawd Session Widget — shows running Claude Code sessions at a glance"
+description = "AI Session Widget — shows running Claude Code and Codex sessions at a glance"
 authors = ["Kasper Legarth"]
+license = "MIT"
+repository = "https://github.com/kasperlegarth/claude-widget"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,7 +13,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "tauri_app_lib"
+name = "ai_session_widget_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -5,6 +5,7 @@ build/
 .env.local
 .env.*.local
 *.log
+*.stackdump
 .DS_Store
 Thumbs.db
 .vscode/

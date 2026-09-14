@@ -1,7 +1,14 @@
 {
-  "name": "claude-widget",
+  "name": "ai-session-widget",
   "private": true,
   "version": "0.1.0",
+  "description": "An always-on-top Windows widget showing your running Claude Code and Codex sessions at a glance",
+  "license": "MIT",
+  "author": "Kasper Legarth",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kasperlegarth/claude-widget.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

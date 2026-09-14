@@ -149,6 +149,7 @@ mod tests {
             project_dir_for_cwd("C:\\Projects\\claude-widget"),
             "C--Projects-claude-widget"
         );
+        // Covers a path with spaces as well as the drive colon and separators.
         assert_eq!(
             project_dir_for_cwd("C:\\Work\\Sites\\Platform\\v10\\Acme Corp\\example-site"),
             "C--Work-Sites-Platform-v10-Acme-Corp-example-site"
