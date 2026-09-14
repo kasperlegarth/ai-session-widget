@@ -257,7 +257,7 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
 }
 
 .status-dot-waiting {
-  background: #8a8580;
+  background: var(--text-muted);
 }
 
 .status-dot-waitingAlert {
