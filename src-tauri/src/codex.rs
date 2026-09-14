@@ -7,6 +7,7 @@ use std::{
     fs::{self, File},
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 #[derive(Default)]
@@ -18,8 +19,17 @@ struct Rollout {
     path: PathBuf,
     offset: u64,
     pid: u32,
+    /// When the writer-pid lookup (an expensive Restart Manager round trip)
+    /// last ran and came up empty — gates retries below so a rollout with no
+    /// resolvable owner doesn't pay that cost on every single poll.
+    pid_lookup_failed_at: Option<Instant>,
     state: RolloutState,
 }
+
+/// How long to wait before retrying a failed writer-pid lookup for the same
+/// rollout. Only gates *repeated* failures (pid stuck at 0) — a pid that
+/// was previously resolved and then died is retried immediately.
+const PID_LOOKUP_BACKOFF: Duration = Duration::from_secs(10);
 
 struct RolloutState {
     id: String,
@@ -160,29 +170,42 @@ impl Rollout {
     }
 }
 
+/// Recursively hunts `dir` for rollout files matching any of `suffixes`
+/// (precomputed once per `collect_with` call, not per file visited — the
+/// naive version reallocated a `-{id}.jsonl` pattern string for every
+/// (file, wanted-id) pair). Stops descending as soon as every id has been
+/// found, since a typical call is only missing one or two rollouts out of
+/// however many sessions exist on disk.
 fn find_rollouts(
     dir: &Path,
-    wanted: &[String],
+    suffixes: &[(String, &str)],
     found: &mut HashMap<String, PathBuf>,
     depth: usize,
 ) {
-    if depth > 4 {
+    if depth > 4 || found.len() >= suffixes.len() {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
+        if found.len() >= suffixes.len() {
+            return;
+        }
         let Ok(kind) = entry.file_type() else {
             continue;
         };
         if kind.is_dir() {
-            find_rollouts(&entry.path(), wanted, found, depth + 1);
+            find_rollouts(&entry.path(), suffixes, found, depth + 1);
         } else if kind.is_file() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            for id in wanted {
-                if name.starts_with("rollout-") && name.ends_with(&format!("-{id}.jsonl")) {
-                    found.insert(id.clone(), entry.path());
+            if !name.starts_with("rollout-") {
+                continue;
+            }
+            for (suffix, id) in suffixes {
+                if name.ends_with(suffix.as_str()) {
+                    found.insert((*id).to_string(), entry.path());
+                    break;
                 }
             }
         }
@@ -303,7 +326,11 @@ impl CodexSessions {
             .collect();
         let mut paths = HashMap::new();
         if !missing.is_empty() {
-            find_rollouts(&home.join("sessions"), &missing, &mut paths, 0);
+            let suffixes: Vec<(String, &str)> = missing
+                .iter()
+                .map(|id| (format!("-{id}.jsonl"), id.as_str()))
+                .collect();
+            find_rollouts(&home.join("sessions"), &suffixes, &mut paths, 0);
         }
         for (id, path) in paths {
             self.entries.insert(
@@ -312,6 +339,7 @@ impl CodexSessions {
                     path,
                     offset: 0,
                     pid: 0,
+                    pid_lookup_failed_at: None,
                     state: RolloutState::default(),
                 },
             );
@@ -319,7 +347,15 @@ impl CodexSessions {
         let mut result = Vec::new();
         for (id, rollout) in &mut self.entries {
             if rollout.pid == 0 || !alive(rollout.pid) {
-                rollout.pid = owner(&locks.join(format!("{id}.lock")));
+                let should_retry = rollout.pid != 0
+                    || rollout
+                        .pid_lookup_failed_at
+                        .is_none_or(|t| t.elapsed() >= PID_LOOKUP_BACKOFF);
+                if should_retry {
+                    rollout.pid = owner(&locks.join(format!("{id}.lock")));
+                    rollout.pid_lookup_failed_at =
+                        if rollout.pid == 0 { Some(Instant::now()) } else { None };
+                }
             }
             rollout.refresh();
             let state = &rollout.state;
