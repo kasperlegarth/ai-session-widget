@@ -209,8 +209,10 @@ fn find_best_window(pid: u32, hint: &str) -> Option<HWND> {
 pub fn focus_pid(pid: u32, hint: &str) {
     use sysinfo::{Pid, System};
 
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    // `new_all()` already performs a full refresh at construction — calling
+    // `refresh_all()` again right after scanned the entire process table
+    // twice for no reason.
+    let sys = System::new_all();
 
     let parent_of = |p: u32| {
         sys.process(Pid::from_u32(p))
@@ -255,6 +257,18 @@ const FOREGROUND_POLL_INTERVAL: Duration = Duration::from_millis(15);
 const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_millis(400);
 
 fn wait_for_new_foreground(previous: HWND, target_pid: u32) -> HWND {
+    // If the target was already the foreground window before we asked
+    // (e.g. the user clicked a card for the terminal they're already
+    // looking at), nothing is going to change — polling for a transition
+    // that isn't coming just burns the full timeout for no reason.
+    let mut previous_pid = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(previous, Some(&mut previous_pid));
+    }
+    if previous_pid == target_pid {
+        return previous;
+    }
+
     let deadline = Instant::now() + FOREGROUND_WAIT_TIMEOUT;
     loop {
         let current = unsafe { GetForegroundWindow() };

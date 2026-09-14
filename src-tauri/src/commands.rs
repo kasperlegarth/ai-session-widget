@@ -45,17 +45,19 @@ fn collect_sessions() -> SessionsPayload {
     let codex_home = std::env::var_os("CODEX_HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| home.join(".codex"));
-    if let Ok(mut codex) = CODEX
+    // Recovers from a poisoned lock the same way SYSTEM does above, rather
+    // than silently dropping every Codex session forever the first time a
+    // panic (anywhere this mutex is held) poisons it.
+    let mut codex = CODEX
         .get_or_init(|| Mutex::new(CodexSessions::default()))
         .lock()
-    {
-        sessions.extend(codex.collect(&codex_home, |pid| {
-            sys.process(sysinfo::Pid::from_u32(pid)).is_some_and(|p| {
-                let name = p.name().to_string_lossy();
-                name.eq_ignore_ascii_case("codex.exe") || name.eq_ignore_ascii_case("codex")
-            })
-        }));
-    }
+        .unwrap_or_else(|e| e.into_inner());
+    sessions.extend(codex.collect(&codex_home, |pid| {
+        sys.process(sysinfo::Pid::from_u32(pid)).is_some_and(|p| {
+            let name = p.name().to_string_lossy();
+            name.eq_ignore_ascii_case("codex.exe") || name.eq_ignore_ascii_case("codex")
+        })
+    }));
 
     let procs: Vec<ProcSample> = sys
         .processes()
@@ -89,8 +91,12 @@ fn collect_sessions() -> SessionsPayload {
 }
 
 #[tauri::command]
-pub fn focus_session(pid: u32, hint: String) {
-    crate::focus::focus_pid(pid, &hint);
+pub async fn focus_session(pid: u32, hint: String) {
+    // Walking the process tree and hunting for/highlighting a window is
+    // blocking work (Win32 calls, a brief poll-and-sleep) — running it
+    // synchronously on the command thread froze the whole UI for the
+    // duration of every click.
+    let _ = tauri::async_runtime::spawn_blocking(move || crate::focus::focus_pid(pid, &hint)).await;
 }
 
 #[tauri::command]
