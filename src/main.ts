@@ -324,62 +324,10 @@ function render(sessions: SessionInfo[]): void {
   mascots.prune(new Set(sessions.filter((s) => s.provider === "claude").map((s) => `${s.provider}:${s.sessionId}`)));
 }
 
-// TEMP DEBUG: replaces all real sessions with a fixed set of demo rows
-// covering every activity message, for a full visual review. Remove
-// before shipping — see DEMO_MODE below.
-const DEMO_MODE = false;
-
-function demoSession(
-  pid: number,
-  name: string,
-  status: SessionStatus,
-  activity: string | null,
-): SessionInfo {
-  return {
-    provider: "claude",
-    pid,
-    sessionId: `demo-${pid}`,
-    name,
-    cwd: `C:\\Projects\\${name}`,
-    status,
-    activity,
-  };
-}
-
-const DEMO_SESSIONS: SessionInfo[] = [
-  demoSession(-1, "reading-file", "working", "Reading bar.rs"),
-  demoSession(-2, "editing-file", "working", "Editing main.ts"),
-  demoSession(-3, "searching", "working", "Searching"),
-  demoSession(-4, "running-command", "working", "Running a command"),
-  demoSession(-5, "searching-web", "working", "Searching the web"),
-  demoSession(-6, "custom-tool", "working", "Using SomeCustomTool"),
-  demoSession(-7, "working-no-activity", "working", null),
-  demoSession(-8, "needs-permission", "needsInput", "Needs permission: Bash"),
-  demoSession(-9, "needs-answer", "needsInput", "Asked a question"),
-  demoSession(-10, "idle-ended-question", "waiting", "Ended with a question"),
-  demoSession(-11, "idle-plain", "waiting", null),
-];
-
-const DEMO_USAGE: ResourceUsage = {
-  sessionCpuPercent: 34,
-  totalCpuPercent: 61,
-  sessionMemoryBytes: 1_200_000_000,
-  totalMemoryBytes: 17_000_000_000,
-  sessionDiskBytes: 2_400_000,
-  totalDiskBytes: 40_000_000,
-  orphanedProcesses: [],
-};
-
 let refreshing = false;
 
 async function refresh(): Promise<void> {
   if (refreshing) return;
-  if (DEMO_MODE) {
-    render(DEMO_SESSIONS);
-    renderUsage(DEMO_USAGE);
-    await resizeWindowToContent();
-    return;
-  }
   refreshing = true;
   try {
     const payload = await invoke<SessionsPayload>("get_sessions");
