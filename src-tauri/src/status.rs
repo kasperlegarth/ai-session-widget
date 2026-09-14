@@ -5,6 +5,10 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 const TAIL_SEEK_WINDOW: u64 = 65536;
+/// Ceiling for the window-widening retry below — bounds how much of a
+/// pathological transcript (one dominated by a few huge lines) we'll ever
+/// read into memory chasing `n` lines.
+const MAX_TAIL_SEEK_WINDOW: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,40 +19,53 @@ pub enum SessionStatus {
 }
 
 pub fn read_tail_lines(path: &Path, n: usize) -> Vec<String> {
-    let Ok(mut file) = File::open(path) else {
-        return Vec::new();
-    };
-    let Ok(file_len) = file.seek(SeekFrom::End(0)) else {
-        return Vec::new();
-    };
+    let mut window = TAIL_SEEK_WINDOW;
+    loop {
+        let Ok(mut file) = File::open(path) else {
+            return Vec::new();
+        };
+        let Ok(file_len) = file.seek(SeekFrom::End(0)) else {
+            return Vec::new();
+        };
 
-    let seeked = file_len > TAIL_SEEK_WINDOW;
-    let start = if seeked { file_len - TAIL_SEEK_WINDOW } else { 0 };
+        let seeked = file_len > window;
+        let start = if seeked { file_len - window } else { 0 };
 
-    if file.seek(SeekFrom::Start(start)).is_err() {
-        return Vec::new();
+        if file.seek(SeekFrom::Start(start)).is_err() {
+            return Vec::new();
+        }
+
+        let mut buf = Vec::new();
+        if file.read_to_end(&mut buf).is_err() {
+            return Vec::new();
+        }
+        let contents = String::from_utf8_lossy(&buf);
+
+        let mut lines: Vec<String> = contents
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.to_string())
+            .collect();
+
+        if seeked && !lines.is_empty() {
+            lines.remove(0); // possibly truncated by the seek — drop it
+        }
+
+        // A single line (or run of lines) wide enough to fill the whole
+        // window on its own — a large tool_result, a big file Read — can
+        // leave `lines` short of `n`, or empty, even though real content
+        // exists earlier in the file. Widen the window and retry rather
+        // than silently reporting no activity.
+        if seeked && lines.len() < n && window < MAX_TAIL_SEEK_WINDOW {
+            window = (window * 4).min(MAX_TAIL_SEEK_WINDOW);
+            continue;
+        }
+
+        if lines.len() > n {
+            lines = lines.split_off(lines.len() - n);
+        }
+        return lines;
     }
-
-    let mut buf = Vec::new();
-    if file.read_to_end(&mut buf).is_err() {
-        return Vec::new();
-    }
-    let contents = String::from_utf8_lossy(&buf);
-
-    let mut lines: Vec<String> = contents
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| l.to_string())
-        .collect();
-
-    if seeked && !lines.is_empty() {
-        lines.remove(0);
-    }
-
-    if lines.len() > n {
-        lines = lines.split_off(lines.len() - n);
-    }
-    lines
 }
 
 pub fn compute_status(hook_status: Option<&str>, tail_lines: &[String]) -> SessionStatus {
@@ -381,6 +398,27 @@ mod tests {
     fn read_tail_lines_missing_file_returns_empty() {
         let tail = read_tail_lines(Path::new("C:\\does\\not\\exist.jsonl"), 5);
         assert_eq!(tail, Vec::<String>::new());
+    }
+
+    #[test]
+    fn read_tail_lines_widens_window_when_a_single_line_fills_it() {
+        // A tool_result or file Read can produce one line far wider than
+        // TAIL_SEEK_WINDOW (64KB) with no newlines inside it — the initial
+        // seek can land entirely inside that line, and dropping its
+        // (possibly truncated) content used to leave the tail empty even
+        // though earlier, real lines exist in the file.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("huge-line-transcript.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(f, "line1").unwrap();
+        writeln!(f, "line2").unwrap();
+        let huge_line = "x".repeat(100_000);
+        writeln!(f, "{huge_line}").unwrap();
+        drop(f);
+
+        let tail = read_tail_lines(&path, 2);
+
+        assert_eq!(tail, vec!["line2".to_string(), huge_line]);
     }
 
     #[test]
