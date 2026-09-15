@@ -248,7 +248,7 @@ pub fn focus_pid(pid: u32, hint: &str) {
         // itself landed correctly. Poll briefly for a foreground window
         // actually owned by `target_pid` before falling back to whatever's
         // current.
-        let visible_hwnd = wait_for_new_foreground(previous_foreground, target_pid);
+        let visible_hwnd = wait_for_new_foreground(previous_foreground, hwnd, target_pid);
         highlight_window(visible_hwnd);
     }
 }
@@ -256,16 +256,23 @@ pub fn focus_pid(pid: u32, hint: &str) {
 const FOREGROUND_POLL_INTERVAL: Duration = Duration::from_millis(15);
 const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_millis(400);
 
-fn wait_for_new_foreground(previous: HWND, target_pid: u32) -> HWND {
-    // If the target was already the foreground window before we asked
-    // (e.g. the user clicked a card for the terminal they're already
-    // looking at), nothing is going to change — polling for a transition
-    // that isn't coming just burns the full timeout for no reason.
-    let mut previous_pid = 0u32;
-    unsafe {
-        GetWindowThreadProcessId(previous, Some(&mut previous_pid));
-    }
-    if previous_pid == target_pid {
+fn wait_for_new_foreground(previous: HWND, target_hwnd: HWND, target_pid: u32) -> HWND {
+    // If the exact window we just asked for was already the foreground
+    // window before we asked (e.g. the user clicked the card for the
+    // terminal they're already looking at), nothing is going to change —
+    // polling for a transition that isn't coming just burns the full
+    // timeout for no reason.
+    //
+    // This must check the specific window handle, not just its process id:
+    // apps like Windows Terminal host several separate windows under one
+    // shared pid (see `all_windows_for_pid`), so `previous` can already
+    // belong to `target_pid` while still being a *different* window than
+    // the one we just brought forward — e.g. switching from one WT window
+    // to another WT window of the same process. Comparing pids there
+    // short-circuited straight back to the stale `previous` window instead
+    // of waiting for the actual target to surface, so the overlay landed on
+    // whichever window happened to be foreground before the click.
+    if previous == target_hwnd {
         return previous;
     }
 
