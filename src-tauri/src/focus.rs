@@ -67,7 +67,7 @@ use std::mem::size_of;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Once;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use windows::core::w;
 use windows::Win32::Foundation::{BOOL, COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
@@ -129,6 +129,25 @@ fn window_for_pid(pid: u32) -> Option<HWND> {
 
 pub fn pid_has_window(pid: u32) -> bool {
     window_for_pid(pid).is_some()
+}
+
+/// Like `pid_has_window`, but only counts a window that's actually
+/// visibly sized on screen — filters out degenerate proxy windows that
+/// technically pass `IsWindowVisible` while never being meant to be seen or
+/// interacted with. Notably ConPTY's hidden, 0x0 `PseudoConsoleWindow`,
+/// which Windows Terminal keeps one of per pane purely so legacy console
+/// APIs have something to resolve.
+///
+/// Used to resolve the real, on-screen window that will end up hosting a
+/// pane — as opposed to `pid_has_window`/`resolve_focus_pid`, which stop
+/// climbing the process tree as soon as *any* pid owns a window at all,
+/// and for a ConPTY-hosted pane that's almost always the pane's own private
+/// hosting process (conhost/OpenConsole), not the terminal emulator (e.g.
+/// WindowsTerminal.exe) whose window is what actually becomes visible.
+fn pid_has_real_window(pid: u32) -> bool {
+    all_windows_for_pid(pid)
+        .into_iter()
+        .any(|hwnd| visual_window_rect(hwnd).is_some())
 }
 
 /// Best-effort check of whether any UI Automation element under `hwnd`
@@ -224,73 +243,43 @@ pub fn focus_pid(pid: u32, hint: &str) {
         return;
     };
 
-    if let Some(hwnd) = find_best_window(target_pid, hint) {
-        let previous_foreground = unsafe { GetForegroundWindow() };
-        unsafe {
-            force_foreground(hwnd);
-        }
-        // `hwnd` itself can be a hidden, zero-size proxy window — notably
-        // ConPTY's "PseudoConsoleWindow", which Windows Terminal keeps one
-        // of per pane purely so legacy console APIs have something to
-        // resolve, and which is what makes SetForegroundWindow land on the
-        // right actual terminal window/tab in the first place (each pane
-        // has its own such window, one-to-one, so there's nothing to
-        // disambiguate — no UI Automation search needed). Highlighting that
-        // hwnd draws a 0x0 overlay nobody can see, so re-read whatever the
-        // OS actually put in the foreground and highlight that instead.
-        //
-        // That handoff from the hidden proxy to the real, visible window
-        // isn't synchronous with SetForegroundWindow returning — Windows
-        // Terminal raises the real window a beat later. Reading
-        // GetForegroundWindow immediately afterward can still catch the
-        // previous window, or the same invisible proxy, which is exactly
-        // what made the highlight silently disappear even though focus
-        // itself landed correctly. Poll briefly for a foreground window
-        // actually owned by `target_pid` before falling back to whatever's
-        // current.
-        let visible_hwnd = wait_for_new_foreground(previous_foreground, hwnd, target_pid);
-        highlight_window(visible_hwnd);
-    }
-}
+    let Some(hwnd) = find_best_window(target_pid, hint) else {
+        return;
+    };
 
-const FOREGROUND_POLL_INTERVAL: Duration = Duration::from_millis(15);
-const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_millis(400);
-
-fn wait_for_new_foreground(previous: HWND, target_hwnd: HWND, target_pid: u32) -> HWND {
-    // If the exact window we just asked for was already the foreground
-    // window before we asked (e.g. the user clicked the card for the
-    // terminal they're already looking at), nothing is going to change —
-    // polling for a transition that isn't coming just burns the full
-    // timeout for no reason.
+    // `hwnd` itself can be a hidden, zero-size proxy window — notably
+    // ConPTY's "PseudoConsoleWindow", which Windows Terminal keeps one of
+    // per pane purely so legacy console APIs have something to resolve, and
+    // which is what makes `force_foreground` below land on the right actual
+    // terminal window/tab in the first place (each pane has its own such
+    // window, one-to-one, so there's nothing to disambiguate at the pane
+    // level — no UI Automation search needed there).
     //
-    // This must check the specific window handle, not just its process id:
-    // apps like Windows Terminal host several separate windows under one
-    // shared pid (see `all_windows_for_pid`), so `previous` can already
-    // belong to `target_pid` while still being a *different* window than
-    // the one we just brought forward — e.g. switching from one WT window
-    // to another WT window of the same process. Comparing pids there
-    // short-circuited straight back to the stale `previous` window instead
-    // of waiting for the actual target to surface, so the overlay landed on
-    // whichever window happened to be foreground before the click.
-    if previous == target_hwnd {
-        return previous;
-    }
+    // What we highlight afterward can't just be "whatever's foreground now"
+    // read back after the fact, though: `resolve_focus_pid` above stops
+    // climbing the process tree as soon as *any* pid owns a window, and for
+    // a ConPTY-hosted pane that's this same degenerate proxy pid, not the
+    // terminal emulator's — so a foreground window belonging to that pid
+    // was never coming, and re-reading ambient desktop state afterward (an
+    // OS-level global that anything can briefly touch) to guess what
+    // happened was exactly what made this flaky: it could catch a stale,
+    // unrelated, or mid-transition window depending on timing, no matter
+    // how that guess was gated. Resolve the *real* on-screen window we
+    // expect this to surface as up front instead, by climbing the same
+    // process tree again with `pid_has_real_window`, which requires an
+    // actually visibly-sized window rather than any window at all — for a
+    // ConPTY-hosted pane that lands on the terminal emulator itself (e.g.
+    // WindowsTerminal.exe). There's then nothing left to reverse-engineer:
+    // we already know which window to highlight before we've even asked
+    // Windows to focus anything.
+    let real_pid =
+        resolve_focus_pid(target_pid, parent_of, pid_has_real_window, 10).unwrap_or(target_pid);
+    let expected_hwnd = find_best_window(real_pid, hint).unwrap_or(hwnd);
 
-    let deadline = Instant::now() + FOREGROUND_WAIT_TIMEOUT;
-    loop {
-        let current = unsafe { GetForegroundWindow() };
-        let mut pid = 0u32;
-        unsafe {
-            GetWindowThreadProcessId(current, Some(&mut pid));
-        }
-        if current != previous && pid == target_pid {
-            return current;
-        }
-        if Instant::now() >= deadline {
-            return current;
-        }
-        thread::sleep(FOREGROUND_POLL_INTERVAL);
+    unsafe {
+        force_foreground(hwnd);
     }
+    highlight_window(expected_hwnd);
 }
 
 /// How long the highlight overlay stays on screen — long enough to spot at
@@ -403,13 +392,18 @@ fn visual_window_rect(hwnd: HWND) -> Option<RECT> {
 /// Runs on its own thread with its own message loop, since the overlay
 /// needs to pump `WM_TIMER`/`WM_DESTROY` independently of the caller.
 fn highlight_window(hwnd: HWND) {
-    // A window that just got raised from minimized/background can briefly
-    // report a degenerate rect while DWM finishes the restore — retry a
-    // few times rather than silently giving up on the first miss.
+    // A window that just got raised from minimized/background — or, for a
+    // ConPTY-hosted pane, is only now being brought forward as a side
+    // effect of focusing its pane's proxy window a moment ago (see
+    // `focus_pid`) — can briefly report a degenerate rect while DWM/the
+    // terminal emulator finishes the transition. Retry for up to ~300ms
+    // rather than silently giving up on the first miss; this returns as
+    // soon as a real rect shows up, so the common case pays none of it.
+    const RECT_RETRY_ATTEMPTS: u32 = 15;
     let mut rect = None;
-    for attempt in 0..5 {
+    for attempt in 0..RECT_RETRY_ATTEMPTS {
         rect = visual_window_rect(hwnd);
-        if rect.is_some() || attempt == 4 {
+        if rect.is_some() || attempt == RECT_RETRY_ATTEMPTS - 1 {
             break;
         }
         thread::sleep(Duration::from_millis(20));
