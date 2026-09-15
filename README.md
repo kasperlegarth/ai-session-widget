@@ -4,7 +4,7 @@ A small always-on-top Windows widget that shows every Claude Code and Codex
 session running on your machine — what each one is doing, and which ones are
 sitting there waiting for you.
 
-<!-- TODO: screenshot goes here -->
+![AI Session Widget in action](demo.gif)
 
 If you keep three or four agent sessions going at once across different
 terminal windows, the annoying part isn't the work — it's noticing that one of
