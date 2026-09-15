@@ -245,10 +245,9 @@ pub fn focus_pid(pid: u32, hint: &str) {
         // GetForegroundWindow immediately afterward can still catch the
         // previous window, or the same invisible proxy, which is exactly
         // what made the highlight silently disappear even though focus
-        // itself landed correctly. Poll briefly for a foreground window
-        // actually owned by `target_pid` before falling back to whatever's
-        // current.
-        let visible_hwnd = wait_for_new_foreground(previous_foreground, hwnd, target_pid);
+        // itself landed correctly. Poll briefly for the foreground to
+        // actually change before falling back to whatever's current.
+        let visible_hwnd = wait_for_new_foreground(previous_foreground, hwnd);
         highlight_window(visible_hwnd);
     }
 }
@@ -256,34 +255,35 @@ pub fn focus_pid(pid: u32, hint: &str) {
 const FOREGROUND_POLL_INTERVAL: Duration = Duration::from_millis(15);
 const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_millis(400);
 
-fn wait_for_new_foreground(previous: HWND, target_hwnd: HWND, target_pid: u32) -> HWND {
+fn wait_for_new_foreground(previous: HWND, target_hwnd: HWND) -> HWND {
     // If the exact window we just asked for was already the foreground
     // window before we asked (e.g. the user clicked the card for the
     // terminal they're already looking at), nothing is going to change —
     // polling for a transition that isn't coming just burns the full
     // timeout for no reason.
-    //
-    // This must check the specific window handle, not just its process id:
-    // apps like Windows Terminal host several separate windows under one
-    // shared pid (see `all_windows_for_pid`), so `previous` can already
-    // belong to `target_pid` while still being a *different* window than
-    // the one we just brought forward — e.g. switching from one WT window
-    // to another WT window of the same process. Comparing pids there
-    // short-circuited straight back to the stale `previous` window instead
-    // of waiting for the actual target to surface, so the overlay landed on
-    // whichever window happened to be foreground before the click.
     if previous == target_hwnd {
         return previous;
     }
 
+    // Deliberately not gated on the foreground window's pid matching
+    // `target_pid`: `resolve_focus_pid` stops climbing the process tree as
+    // soon as *any* pid owns a window, and `pid_has_window` only checks
+    // `IsWindowVisible` — not size — so for a ConPTY-hosted pane that's
+    // almost always the pane's private, degenerate-sized hosting process
+    // (conhost/OpenConsole), not the terminal emulator (e.g.
+    // WindowsTerminal.exe) that owns the real, visible window. The real
+    // foreground window that appears after `force_foreground` almost always
+    // belongs to a *different* pid than `target_pid`, so a pid check here
+    // could essentially never match — every focus would burn the full
+    // timeout and fall back to "whatever happens to be foreground right
+    // now" with no actual verification, which is exactly what made the
+    // highlight land on the wrong or a mid-transition window. Any change
+    // away from `previous` is a much more reliable signal that the OS
+    // finished handing focus to whatever we just asked for.
     let deadline = Instant::now() + FOREGROUND_WAIT_TIMEOUT;
     loop {
         let current = unsafe { GetForegroundWindow() };
-        let mut pid = 0u32;
-        unsafe {
-            GetWindowThreadProcessId(current, Some(&mut pid));
-        }
-        if current != previous && pid == target_pid {
+        if current != previous {
             return current;
         }
         if Instant::now() >= deadline {
