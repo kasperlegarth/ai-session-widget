@@ -159,6 +159,8 @@ const usageCpuEl = document.getElementById("usage-cpu") as HTMLSpanElement;
 const usageMemEl = document.getElementById("usage-mem") as HTMLSpanElement;
 const usageDiskEl = document.getElementById("usage-disk") as HTMLSpanElement;
 const orphanWarningEl = document.getElementById("orphan-warning") as HTMLDivElement;
+const orphanSummaryEl = document.getElementById("orphan-summary-btn") as HTMLButtonElement;
+const orphanListEl = document.getElementById("orphan-list") as HTMLUListElement;
 
 function formatPercent(value: number): string {
   return `${Math.round(value)}%`;
@@ -238,18 +240,75 @@ function updateOrphanTracking(orphans: OrphanProcess[]): OrphanProcess[] {
 // Flags processes left behind by a tool call whose parent shell has already
 // exited (e.g. a backgrounded `find /` that timed out and was never killed)
 // — see usage.rs::find_runaway_orphans for the detection rule.
+let orphanListExpanded = false;
+
 function renderOrphanWarning(rawOrphans: OrphanProcess[]): void {
   const orphans = updateOrphanTracking(rawOrphans);
   if (orphans.length === 0) {
     orphanWarningEl.hidden = true;
+    orphanListExpanded = false;
+    orphanListEl.hidden = true;
+    orphanListEl.replaceChildren();
     return;
   }
   orphanWarningEl.hidden = false;
   const noun = orphans.length === 1 ? "orphaned process" : "orphaned processes";
-  orphanWarningEl.textContent = `⚠ ${orphans.length} ${noun} still running`;
-  orphanWarningEl.title = orphans
+  orphanSummaryEl.textContent = `⚠ ${orphans.length} ${noun} still running — click for details`;
+  orphanSummaryEl.title = orphans
     .map((o) => `${o.name} (PID ${o.pid}, ${Math.round(o.cpuPercent)}% CPU)`)
     .join("\n");
+  renderOrphanList(orphans);
+}
+
+function renderOrphanList(orphans: OrphanProcess[]): void {
+  orphanListEl.hidden = !orphanListExpanded;
+  orphanListEl.replaceChildren();
+  for (const orphan of orphans) {
+    const li = document.createElement("li");
+    li.className = "orphan-row";
+
+    const label = document.createElement("span");
+    label.className = "orphan-row-label";
+    label.textContent = `${orphan.name} (PID ${orphan.pid}) — ${Math.round(orphan.cpuPercent)}% CPU`;
+    label.title = label.textContent;
+
+    const killBtn = document.createElement("button");
+    killBtn.type = "button";
+    killBtn.className = "orphan-kill-btn";
+    killBtn.textContent = "End process";
+    killBtn.addEventListener("click", () => void killOrphan(orphan));
+
+    li.append(label, killBtn);
+    orphanListEl.appendChild(li);
+  }
+}
+
+orphanSummaryEl.addEventListener("click", () => {
+  orphanListExpanded = !orphanListExpanded;
+  orphanListEl.hidden = !orphanListExpanded;
+  void resizeWindowToContent();
+});
+
+// Only ever runs after the user explicitly confirms — the widget is
+// otherwise strictly read-only (see README). Re-verified against the live
+// pid+name on the Rust side too, in case the pid was recycled since the
+// confirm dialog was built.
+async function killOrphan(orphan: OrphanProcess): Promise<void> {
+  const confirmed = window.confirm(
+    `End ${orphan.name} (PID ${orphan.pid})?\n\n` +
+      `This process was left behind by a session whose parent shell already exited. ` +
+      `Ending it cannot be undone and may lose unsaved work it was doing.`,
+  );
+  if (!confirmed) return;
+
+  try {
+    await invoke("kill_orphan_process", { pid: orphan.pid, name: orphan.name });
+    trackedOrphans.delete(orphan.pid);
+  } catch (err) {
+    console.error("Failed to end orphaned process", err);
+    window.alert(`Couldn't end ${orphan.name} (PID ${orphan.pid}):\n${err}`);
+  }
+  await refresh();
 }
 
 interface SessionRow {

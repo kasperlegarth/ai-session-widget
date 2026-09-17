@@ -100,6 +100,40 @@ pub async fn focus_session(pid: u32, hint: String) {
 }
 
 #[tauri::command]
+pub async fn kill_orphan_process(pid: u32, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || kill_process_by_pid_and_name(pid, &name))
+        .await
+        .unwrap_or_else(|_| Err("Internal error while terminating the process".into()))
+}
+
+// Re-checks the pid immediately before killing and refuses unless its name
+// still matches what the frontend showed the user — Windows recycles pids,
+// so the two-second-old snapshot the confirm dialog was built from could by
+// now belong to an unrelated process.
+fn kill_process_by_pid_and_name(pid: u32, expected_name: &str) -> Result<(), String> {
+    let mut sys = SYSTEM
+        .get_or_init(|| Mutex::new(System::new_all()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    sys.refresh_processes(ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]), true);
+
+    let Some(process) = sys.process(sysinfo::Pid::from_u32(pid)) else {
+        return Err("That process has already exited".into());
+    };
+    let actual_name = process.name().to_string_lossy();
+    if !actual_name.eq_ignore_ascii_case(expected_name) {
+        return Err(format!(
+            "PID {pid} is now a different process ({actual_name}) — refusing to end it"
+        ));
+    }
+    if process.kill() {
+        Ok(())
+    } else {
+        Err("Failed to terminate the process".into())
+    }
+}
+
+#[tauri::command]
 pub fn set_always_on_top(window: tauri::Window, enabled: bool) {
     let _ = window.set_always_on_top(enabled);
 }
