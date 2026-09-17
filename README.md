@@ -27,6 +27,8 @@ with a brief highlight so you can spot it among a dozen open windows.
   machine total, so you can see what the agents are costing you.
 - **Orphaned-process warning** — flags tool processes (a runaway `find`, a
   stray `node`) left behind by a session whose parent shell already exited.
+  Click it to see exactly which process(es) and end one with a confirm
+  prompt.
 - **Light/dark/system theme**, auto-sizing or manually resizable, always-on-top
   toggle — all from the right-click menu.
 
@@ -67,9 +69,12 @@ polls those every two seconds, read-only:
 | What it's doing | tail of `~/.claude/projects/<dir>/<sessionId>.jsonl` | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
 
 **No hooks, config changes, API keys or wrappers are required.** The widget
-never writes to those directories, never talks to any network service, and
-never kills a process — including the orphans it warns you about. It only
-reads, and calls Win32 to move a window to the foreground.
+never writes to those session/project files and never talks to any network
+service. It's read-only apart from two things you have to explicitly
+trigger yourself: focusing a window (calls Win32 to bring it to the
+foreground) and ending an orphaned process from the warning panel (asks for
+confirmation, then re-checks the pid still matches before terminating it —
+never done automatically).
 
 See [docs/codex-sessions.md](docs/codex-sessions.md) for the Codex specifics.
 
