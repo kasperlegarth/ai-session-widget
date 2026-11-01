@@ -1,0 +1,65 @@
+# Dependabot version updates (fork). Security updates for known
+# vulnerabilities are a repository setting (on) and come in addition,
+# whenever an advisory appears.
+#
+# Monthly, one grouped pull request per ecosystem for minor and patch
+# updates; each runs through CI (Rust, frontend, secret scan).
+#
+# Cooldown: a new version is only proposed once it is 7 days old. Hijacked
+# or broken releases are usually found and pulled within days, and minor
+# and patch updates are merged automatically (dependabot-automerge.yml).
+# Security updates ignore the cooldown and still come at once.
+#
+# Tauri: the Rust crate `tauri` and the npm packages `@tauri-apps/api` /
+# `@tauri-apps/cli` must share the minor version, or `tauri build` aborts.
+# Dependabot cannot bump npm and Cargo in one pull request, so minor (and
+# major) Tauri updates are left out here and done by hand together, see
+# docs/fork/README.md "Updating Tauri". Their patch updates still come.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "@tauri-apps/api"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: "@tauri-apps/cli"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: tauri
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: tauri-build
+        update-types: [version-update:semver-minor, version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
