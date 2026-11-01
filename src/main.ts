@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { Menu } from "@tauri-apps/api/menu";
 import { currentMonitor, getCurrentWindow, LogicalSize, PhysicalPosition } from "@tauri-apps/api/window";
 import { createMascotElement, mascots, type MascotStatus } from "./mascot";
 import { createCodexLogoElement } from "./codex-logo";
@@ -26,7 +27,20 @@ import {
   toggleStatus,
   updateStatusSince,
 } from "./sessionOrder";
-import { initTray, pinFlyout, reanchorFlyout, updateStatusIndicators } from "./tray";
+import { initTray, setTrayMenu, updateStatusIndicators } from "./tray";
+import { initAbout, setAboutOpen } from "./about";
+import { type MenuActions, type MenuState, contextMenuEntries, trayMenuEntries } from "./contextMenu";
+import { loadChoice, loadFlag, saveFlag } from "./settings";
+import {
+  bringToFront,
+  getWindowLayer,
+  hideWidget,
+  initWindowLayer,
+  isShownInTaskbar,
+  onTrayClick,
+  setWindowLayer,
+  toggleTaskbarButton,
+} from "./windowLayer";
 
 const WINDOW_WIDTH = 340;
 const appEl = document.getElementById("app") as HTMLDivElement;
@@ -35,22 +49,12 @@ const appWindow = getCurrentWindow();
 type ThemePreference = "light" | "dark" | "system";
 const THEME_STORAGE_KEY = "theme-preference";
 
-function loadThemePreference(): ThemePreference {
-  const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
-}
-
-let themePreference: ThemePreference = loadThemePreference();
+let themePreference: ThemePreference = loadChoice(THEME_STORAGE_KEY, ["light", "dark", "system"], "system");
 
 type SizeMode = "auto" | "manual";
 const SIZE_MODE_STORAGE_KEY = "size-mode";
 
-function loadSizeMode(): SizeMode {
-  const stored = localStorage.getItem(SIZE_MODE_STORAGE_KEY);
-  return stored === "manual" ? "manual" : "auto";
-}
-
-let sizeMode: SizeMode = loadSizeMode();
+let sizeMode: SizeMode = loadChoice(SIZE_MODE_STORAGE_KEY, ["auto", "manual"], "auto");
 const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 function applyTheme(): void {
@@ -70,12 +74,7 @@ systemDarkQuery.addEventListener("change", () => {
 type Density = "normal" | "compact";
 const DENSITY_STORAGE_KEY = "density";
 
-function loadDensity(): Density {
-  const stored = localStorage.getItem(DENSITY_STORAGE_KEY);
-  return stored === "compact" ? "compact" : "normal";
-}
-
-let density: Density = loadDensity();
+let density: Density = loadChoice(DENSITY_STORAGE_KEY, ["normal", "compact"], "normal");
 
 function applyDensity(): void {
   document.body.dataset.density = density;
@@ -83,37 +82,32 @@ function applyDensity(): void {
 
 applyDensity();
 
-const MENU_MARGIN = 4;
-let contextMenuOpen = false;
+// Transparent background: only the window panel goes, the cards stay solid
+// (see body[data-transparent="on"] in style.css).
+const TRANSPARENT_STORAGE_KEY = "transparent-background";
+let transparentBackground = loadFlag(TRANSPARENT_STORAGE_KEY, false);
+
+function applyTransparency(): void {
+  document.body.dataset.transparent = transparentBackground ? "on" : "off";
+}
+
+applyTransparency();
 
 // Natural height of the content. #app has min-height: 100%, so its
 // scrollHeight never drops below the current window height — measuring that
 // meant the window could grow but never shrink again (e.g. after a session
 // ended or when switching to the compact view). Instead: the lowest bottom
 // edge of #app's visible in-flow children (sessions, filter bar, orphan
-// warning, usage bar) plus #app's bottom padding. The context menu is
-// position: fixed and handled in requiredWindowHeight.
+// warning, usage bar, about panel) plus #app's bottom padding.
 function contentHeight(): number {
   let bottom = 0;
   for (const child of Array.from(appEl.children)) {
-    if (!(child instanceof HTMLElement) || child.id === "context-menu" || child.hidden) continue;
+    if (!(child instanceof HTMLElement) || child.hidden) continue;
     bottom = Math.max(bottom, child.getBoundingClientRect().bottom);
   }
   if (bottom === 0) return appEl.scrollHeight;
   const paddingBottom = parseFloat(getComputedStyle(appEl).paddingBottom) || 0;
   return Math.ceil(bottom + paddingBottom);
-}
-
-// While the context menu is open the window must be tall enough to show all
-// of it — with few sessions (or the compact view) the auto-sized window is
-// shorter than the menu, which used to cut off its lower entries.
-function requiredWindowHeight(): number {
-  let height = contentHeight();
-  const menu = document.getElementById("context-menu");
-  if (contextMenuOpen && menu) {
-    height = Math.max(height, Math.ceil(menu.getBoundingClientRect().bottom + MENU_MARGIN));
-  }
-  return height;
 }
 
 // Window width is the user's choice in both size modes: wider windows show
@@ -159,24 +153,25 @@ function saveWindowSize(): void {
 // Auto-fits the window height to however many session cards are showing.
 // Skipped in "manual" size mode, where the user has taken over sizing via
 // the OS resize border (see applySizeMode) and we must not fight them.
+// Only touches the window when the size really changes: this runs on every
+// poll, and a SetWindowPos every 2 s ends Windows' "Show desktop" state, so
+// the second Win+D showed the desktop again instead of restoring the windows.
 async function resizeWindowToContent(): Promise<void> {
   if (sizeMode === "manual") return;
   try {
-    await appWindow.setSize(new LogicalSize(preferredWidth, requiredWindowHeight()));
-    // Opened from the tray: keep the flyout sitting on the taskbar while it grows/shrinks.
-    await reanchorFlyout();
+    const wanted = new LogicalSize(preferredWidth, contentHeight());
+    const current = (await appWindow.innerSize()).toLogical(await appWindow.scaleFactor());
+    if (Math.abs(current.width - wanted.width) < 1 && Math.abs(current.height - wanted.height) < 1) return;
+    await appWindow.setSize(wanted);
     await keepWindowOnScreen();
   } catch (err) {
     console.error("Failed to resize window to content", err);
   }
 }
 
-// Screen y (physical px) the window had before the context menu pushed it up.
-let yBeforeMenuShift: number | null = null;
-
-// If the window now reaches below the monitor's work area (e.g. the context
-// menu opened in a widget near the taskbar), move it up so everything stays
-// visible. A shift caused by the menu is undone once the menu closes.
+// If the window now reaches below the monitor's work area (e.g. more
+// sessions in a widget near the taskbar), move it up so everything stays
+// visible.
 async function keepWindowOnScreen(): Promise<void> {
   const monitor = await currentMonitor();
   if (!monitor) return;
@@ -185,17 +180,8 @@ async function keepWindowOnScreen(): Promise<void> {
   const workTop = monitor.workArea.position.y;
   const workBottom = workTop + monitor.workArea.size.height;
 
-  if (!contextMenuOpen && yBeforeMenuShift !== null) {
-    const restoreY = yBeforeMenuShift;
-    yBeforeMenuShift = null;
-    const y = Math.max(workTop, Math.min(restoreY, workBottom - size.height));
-    if (y !== pos.y) await appWindow.setPosition(new PhysicalPosition(pos.x, y));
-    return;
-  }
-
   if (pos.y + size.height > workBottom) {
     const y = Math.max(workTop, workBottom - size.height);
-    if (contextMenuOpen && yBeforeMenuShift === null) yBeforeMenuShift = pos.y;
     await appWindow.setPosition(new PhysicalPosition(pos.x, y));
   }
 }
@@ -270,15 +256,12 @@ for (const handle of document.querySelectorAll<HTMLDivElement>(".resize-handle")
     | "SouthWest";
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    pinFlyout(); // resizing a tray flyout turns it into a normal widget
     appWindow.startResizeDragging(direction).catch((err) => {
       console.error("Failed to start resize dragging", err);
     });
   });
 }
 
-// Dragging a tray flyout away pins it as a normal widget (no auto-hide).
-document.getElementById("drag-region")?.addEventListener("pointerdown", () => pinFlyout());
 
 type SessionStatus = "working" | "needsInput" | "waiting";
 
@@ -596,14 +579,14 @@ function buildSessionRow(session: SessionInfo, visual: MascotStatus): SessionRow
   return row;
 }
 
-// Click behaviour switches (context menu > "On click").
+// Click behaviour switches (context menu > "On session click").
 // "Open in Claude Desktop" is on unless switched off; the sidebar selection
 // via UI Automation is an opt-in fallback.
 const OPEN_IN_DESKTOP_STORAGE_KEY = "click-open-in-desktop";
 const SIDEBAR_SELECT_STORAGE_KEY = "click-sidebar-select";
 const clickSettings = {
-  openInDesktop: localStorage.getItem(OPEN_IN_DESKTOP_STORAGE_KEY) !== "off",
-  sidebarSelect: localStorage.getItem(SIDEBAR_SELECT_STORAGE_KEY) === "on",
+  openInDesktop: loadFlag(OPEN_IN_DESKTOP_STORAGE_KEY, true),
+  sidebarSelect: loadFlag(SIDEBAR_SELECT_STORAGE_KEY, false),
 };
 
 // Claude Desktop sessions carry hostSessionId ("local_…") in their session
@@ -943,183 +926,122 @@ async function refresh(): Promise<void> {
   }
 }
 
-// Tray icon + taskbar badge (tray.ts); "Quit" in the tray menu closes the app
-// like the widget's own "Close".
-void initTray(() => void invoke("close_app"));
-
 void refresh();
 setInterval(() => void refresh(), POLL_INTERVAL_MS);
 
-// Exposed for the context menu (Task 10) to trigger a manual refresh.
-(window as unknown as { __refreshSessions: () => void }).__refreshSessions = () => void refresh();
-
-const contextMenu = document.getElementById("context-menu") as HTMLDivElement;
-const menuAlwaysOnTop = document.getElementById("menu-always-on-top") as HTMLDivElement;
-const menuCompact = document.getElementById("menu-compact") as HTMLDivElement;
-const menuAutostart = document.getElementById("menu-autostart") as HTMLDivElement;
-const menuOpenInDesktop = document.getElementById("menu-open-in-desktop") as HTMLDivElement;
-const menuSidebarSelect = document.getElementById("menu-sidebar-select") as HTMLDivElement;
-const menuRefresh = document.getElementById("menu-refresh") as HTMLDivElement;
-const menuClose = document.getElementById("menu-close") as HTMLDivElement;
-const themeMenuItems: Record<ThemePreference, HTMLDivElement> = {
-  light: document.getElementById("menu-theme-light") as HTMLDivElement,
-  dark: document.getElementById("menu-theme-dark") as HTMLDivElement,
-  system: document.getElementById("menu-theme-system") as HTMLDivElement,
-};
-const sizeMenuItems: Record<SizeMode, HTMLDivElement> = {
-  auto: document.getElementById("menu-size-auto") as HTMLDivElement,
-  manual: document.getElementById("menu-size-manual") as HTMLDivElement,
-};
-
-let alwaysOnTop = true; // matches tauri.conf.json default
-
-function updateAlwaysOnTopCheckmark(): void {
-  menuAlwaysOnTop.classList.toggle("checked", alwaysOnTop);
-}
-updateAlwaysOnTopCheckmark();
-
-function showContextMenu(x: number, y: number): void {
-  contextMenu.hidden = false;
-  contextMenuOpen = true;
-  contextMenu.style.left = `${x}px`;
-  contextMenu.style.top = `${y}px`;
-
-  const margin = MENU_MARGIN;
-  const rect = contextMenu.getBoundingClientRect();
-  const maxX = window.innerWidth - rect.width - margin;
-  const maxY = window.innerHeight - rect.height - margin;
-  contextMenu.style.left = `${Math.min(x, Math.max(margin, maxX))}px`;
-  contextMenu.style.top = `${Math.min(y, Math.max(margin, maxY))}px`;
-
-  // Auto size: grow the window if it is shorter than the menu (see
-  // requiredWindowHeight); hideContextMenu shrinks it back.
-  void resizeWindowToContent();
-}
-
-function hideContextMenu(): void {
-  if (contextMenu.hidden) return;
-  contextMenu.hidden = true;
-  contextMenuOpen = false;
-  void resizeWindowToContent();
-}
-
-document.addEventListener("contextmenu", (e) => {
-  e.preventDefault();
-  showContextMenu(e.clientX, e.clientY);
-});
-
-document.addEventListener("click", (e) => {
-  if (!contextMenu.contains(e.target as Node)) {
-    hideContextMenu();
-  }
-});
-
-menuAlwaysOnTop.addEventListener("click", () => {
-  alwaysOnTop = !alwaysOnTop;
-  updateAlwaysOnTopCheckmark();
-  void invoke("set_always_on_top", { enabled: alwaysOnTop });
-  hideContextMenu();
-});
-
-function updateCompactCheckmark(): void {
-  menuCompact.classList.toggle("checked", density === "compact");
-}
-updateCompactCheckmark();
-
-menuCompact.addEventListener("click", () => {
-  density = density === "compact" ? "normal" : "compact";
-  localStorage.setItem(DENSITY_STORAGE_KEY, density);
-  applyDensity();
-  updateCompactCheckmark();
-  hideContextMenu(); // also re-fits the window to the new density in auto size
-});
-
-function updateClickCheckmarks(): void {
-  menuOpenInDesktop.classList.toggle("checked", clickSettings.openInDesktop);
-  menuSidebarSelect.classList.toggle("checked", clickSettings.sidebarSelect);
-}
-updateClickCheckmarks();
-
-menuOpenInDesktop.addEventListener("click", () => {
-  clickSettings.openInDesktop = !clickSettings.openInDesktop;
-  localStorage.setItem(OPEN_IN_DESKTOP_STORAGE_KEY, clickSettings.openInDesktop ? "on" : "off");
-  updateClickCheckmarks();
-  hideContextMenu();
-});
-
-menuSidebarSelect.addEventListener("click", () => {
-  clickSettings.sidebarSelect = !clickSettings.sidebarSelect;
-  localStorage.setItem(SIDEBAR_SELECT_STORAGE_KEY, clickSettings.sidebarSelect ? "on" : "off");
-  updateClickCheckmarks();
-  hideContextMenu();
-});
+// ---------------------------------------------------------------------------
+// Menus (fork): native right-click menu and tray menu, both from
+// contextMenu.ts. The widget's own settings are changed here; window layer
+// and taskbar button live in windowLayer.ts, About & help in about.ts.
+// ---------------------------------------------------------------------------
 
 // Autostart state lives on disk (Startup-folder shortcut), not in
 // LocalStorage, so it is read from the backend.
 let autostartEnabled = false;
 
-function updateAutostartCheckmark(): void {
-  menuAutostart.classList.toggle("checked", autostartEnabled);
-}
-updateAutostartCheckmark();
-
 invoke<boolean>("get_autostart")
   .then((enabled) => {
     autostartEnabled = enabled;
-    updateAutostartCheckmark();
+    void refreshTrayMenu();
   })
   .catch((err) => console.error("Failed to read autostart state", err));
 
-menuAutostart.addEventListener("click", () => {
-  hideContextMenu();
-  invoke<boolean>("set_autostart", { enabled: !autostartEnabled })
-    .then((enabled) => {
-      autostartEnabled = enabled;
-      updateAutostartCheckmark();
-    })
-    .catch((err) => window.alert(`Start with Windows: ${err}`));
-});
-
-function updateThemeCheckmarks(): void {
-  for (const [pref, el] of Object.entries(themeMenuItems)) {
-    el.classList.toggle("checked", pref === themePreference);
-  }
+function menuState(): MenuState {
+  return {
+    windowLayer: getWindowLayer(),
+    showInTaskbar: isShownInTaskbar(),
+    autostart: autostartEnabled,
+    compact: density === "compact",
+    transparent: transparentBackground,
+    sizeMode,
+    theme: themePreference,
+    openInDesktop: clickSettings.openInDesktop,
+    sidebarSelect: clickSettings.sidebarSelect,
+  };
 }
-updateThemeCheckmarks();
 
-for (const [pref, el] of Object.entries(themeMenuItems)) {
-  el.addEventListener("click", () => {
-    themePreference = pref as ThemePreference;
+const menuActions: MenuActions = {
+  setWindowLayer,
+  toggleTaskbarButton,
+  toggleAutostart() {
+    invoke<boolean>("set_autostart", { enabled: !autostartEnabled })
+      .then((enabled) => {
+        autostartEnabled = enabled;
+        void refreshTrayMenu();
+      })
+      .catch((err) => window.alert(`Start with Windows: ${err}`));
+  },
+  toggleCompact() {
+    density = density === "compact" ? "normal" : "compact";
+    localStorage.setItem(DENSITY_STORAGE_KEY, density);
+    applyDensity();
+    void resizeWindowToContent(); // re-fits the window to the new density in auto size
+  },
+  toggleTransparent() {
+    transparentBackground = !transparentBackground;
+    saveFlag(TRANSPARENT_STORAGE_KEY, transparentBackground);
+    applyTransparency();
+  },
+  setSizeMode(mode) {
+    sizeMode = mode;
+    localStorage.setItem(SIZE_MODE_STORAGE_KEY, sizeMode);
+    void applySizeMode();
+  },
+  setTheme(pref) {
+    themePreference = pref;
     localStorage.setItem(THEME_STORAGE_KEY, themePreference);
     applyTheme();
-    updateThemeCheckmarks();
-    hideContextMenu();
+  },
+  toggleOpenInDesktop() {
+    clickSettings.openInDesktop = !clickSettings.openInDesktop;
+    saveFlag(OPEN_IN_DESKTOP_STORAGE_KEY, clickSettings.openInDesktop);
+  },
+  toggleSidebarSelect() {
+    clickSettings.sidebarSelect = !clickSettings.sidebarSelect;
+    saveFlag(SIDEBAR_SELECT_STORAGE_KEY, clickSettings.sidebarSelect);
+  },
+  refresh: () => void refresh(),
+  openAbout: () => setAboutOpen(true),
+  close: () => void invoke("close_app"),
+  changed: () => void refreshTrayMenu(),
+};
+
+function trayEntries() {
+  return trayMenuEntries(menuState(), menuActions, {
+    bringToFront: () => void bringToFront(),
+    hide: hideWidget,
   });
 }
 
-function updateSizeMenuCheckmarks(): void {
-  for (const [mode, el] of Object.entries(sizeMenuItems)) {
-    el.classList.toggle("checked", mode === sizeMode);
-  }
-}
-updateSizeMenuCheckmarks();
-
-for (const [mode, el] of Object.entries(sizeMenuItems)) {
-  el.addEventListener("click", () => {
-    sizeMode = mode as SizeMode;
-    localStorage.setItem(SIZE_MODE_STORAGE_KEY, sizeMode);
-    updateSizeMenuCheckmarks();
-    void applySizeMode();
-    hideContextMenu();
-  });
+async function refreshTrayMenu(): Promise<void> {
+  await setTrayMenu(trayEntries());
 }
 
-menuRefresh.addEventListener("click", () => {
-  (window as unknown as { __refreshSessions: () => void }).__refreshSessions();
-  hideContextMenu();
+// Native popup menu: overlaps the desktop and other windows instead of being
+// clipped to (or growing) the widget. The previous one is released when the
+// next one is built.
+let contextMenu: Menu | null = null;
+
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  void (async () => {
+    try {
+      const previous = contextMenu;
+      contextMenu = await Menu.new({ items: contextMenuEntries(menuState(), menuActions) });
+      await previous?.close();
+      await contextMenu.popup(); // at the mouse position
+    } catch (err) {
+      console.error("Failed to open the context menu", err);
+    }
+  })();
 });
 
-menuClose.addEventListener("click", () => {
-  void invoke("close_app");
-  hideContextMenu();
+// Startup of the fork's modules, after all state above exists.
+initWindowLayer();
+initAbout(() => void resizeWindowToContent());
+// Tray icon + taskbar badge (tray.ts).
+void initTray({
+  onClick: () => void onTrayClick(),
+  onDoubleClick: () => void bringToFront(),
+  menu: trayEntries(),
 });

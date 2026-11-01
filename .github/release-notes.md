@@ -7,7 +7,10 @@ A small Windows widget that shows every running Claude Code session, including t
 - Click a session to open it directly in Claude Desktop.
 - Idle sessions with a command still running in the background are marked as such; sessions idle for an hour or more are dimmed.
 - Compact view and a multi-column layout by status.
-- Tray icon and taskbar badge show how many sessions are waiting for you.
+- Tray icon and taskbar badge show how many sessions are waiting for you. A click on the tray icon brings the widget to the front; right-click opens the full menu.
+- Window modes: always on top, normal, or pinned to the desktop like a gadget (below all windows, stays visible on Win+D, comes up while you drag it). The taskbar button can be switched off.
+- Right-click menu with Window, View and On session click settings; compact view, transparent background, light/dark/system theme.
+- About and help with the version and a link to the repository.
 - Optional "Start with Windows".
 - Only one widget runs at a time; starting it again brings the running one to the front.
 

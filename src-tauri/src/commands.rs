@@ -124,6 +124,13 @@ pub fn open_desktop_session(host_session_id: String) -> Result<(), String> {
     crate::deeplink::open(&url)
 }
 
+/// About & help → "Open repository on GitHub". The URL is fixed at build
+/// time (Cargo.toml `repository`), nothing from the frontend reaches the shell.
+#[tauri::command]
+pub fn open_repository() -> Result<(), String> {
+    crate::deeplink::open(env!("CARGO_PKG_REPOSITORY"))
+}
+
 #[tauri::command]
 pub fn get_autostart(app: tauri::AppHandle) -> bool {
     crate::autostart::is_enabled(&app.package_info().name)
@@ -174,9 +181,24 @@ fn kill_process_by_pid_and_name(pid: u32, expected_name: &str) -> Result<(), Str
     }
 }
 
+/// `layer`: "top", "normal" or "desktop" (see desktop.rs).
 #[tauri::command]
-pub fn set_always_on_top(window: tauri::Window, enabled: bool) {
-    let _ = window.set_always_on_top(enabled);
+pub fn set_window_layer(window: tauri::WebviewWindow, layer: String) -> Result<(), String> {
+    let layer = crate::desktop::WindowLayer::parse(&layer)
+        .ok_or_else(|| format!("Unknown window layer: {layer:?}"))?;
+    crate::desktop::apply(&window, layer)
+}
+
+/// Pinned widget temporarily above all windows, or back (desktop.rs).
+#[tauri::command]
+pub fn raise_pinned(window: tauri::WebviewWindow, raised: bool) -> Result<(), String> {
+    crate::desktop::raise_pinned(&window, raised)
+}
+
+/// Drag of the pinned widget started: up until the mouse is released.
+#[tauri::command]
+pub fn raise_pinned_for_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    crate::desktop::raise_pinned_for_drag(&window)
 }
 
 #[tauri::command]

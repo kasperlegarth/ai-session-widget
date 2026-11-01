@@ -1,8 +1,10 @@
+/* Light: warm light grey cards on a slightly darker ground, like the Claude
+   app's light surfaces (fork; upstream had white cards on #f4f1ec). */
 :root {
-  --bg-app: #f4f1ec;
+  --bg-app: #e9e7e1;
   --text-primary: #2c2a28;
-  --card-bg: #ffffff;
-  --card-border: rgba(0, 0, 0, 0.06);
+  --card-bg: #f7f6f2;
+  --card-border: rgba(0, 0, 0, 0.07);
   --card-border-hover: rgba(0, 0, 0, 0.12);
   --card-shadow-1: rgba(0, 0, 0, 0.04);
   --card-shadow-2: rgba(0, 0, 0, 0.04);
@@ -11,11 +13,6 @@
   --status-working: #16a34a;
   --status-needs-input: #dc2626;
   --status-question: #2563eb;
-  --menu-bg: #ffffff;
-  --menu-border: rgba(0, 0, 0, 0.08);
-  --menu-shadow: rgba(0, 0, 0, 0.12);
-  --menu-hover: rgba(0, 0, 0, 0.06);
-  --menu-separator: rgba(0, 0, 0, 0.08);
   --scrollbar-thumb: rgba(44, 42, 40, 0.28);
   --scrollbar-thumb-hover: rgba(44, 42, 40, 0.46);
 }
@@ -33,11 +30,6 @@
   --status-working: #4ade80;
   --status-needs-input: #f05252;
   --status-question: #60a5fa;
-  --menu-bg: #38352f;
-  --menu-border: rgba(255, 255, 255, 0.1);
-  --menu-shadow: rgba(0, 0, 0, 0.35);
-  --menu-hover: rgba(255, 255, 255, 0.08);
-  --menu-separator: rgba(255, 255, 255, 0.1);
   --scrollbar-thumb: rgba(234, 230, 224, 0.28);
   --scrollbar-thumb-hover: rgba(234, 230, 224, 0.46);
 }
@@ -64,30 +56,40 @@ html, body {
   flex-direction: column;
 }
 
+/* Title (fork): logo + short name at the left of the filter bar, instead of
+   a row of its own. The whole bar is a drag region; Tauri only drags from
+   the element that carries data-tauri-drag-region, not from its children,
+   so the logo and text let clicks through and the chips stay clickable. */
 #drag-region {
   flex-shrink: 0;
-  height: 14px;
-  margin-bottom: 4px;
-  border-radius: 10px 10px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: stretch;
+  padding-right: 2px;
   cursor: move;
-  position: relative;
 }
 
-/* Product name as title (fork), in place of upstream's grip line. Clicks go
-   through to #drag-region: Tauri only drags from the element that carries
-   data-tauri-drag-region, not from its children. */
+#filter-bar {
+  cursor: move;
+}
+
+#filter-bar button {
+  cursor: pointer;
+}
+
+#app-logo {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
 #app-title {
-  display: block;
-  padding: 0 2px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 14px;
   letter-spacing: 0.02em;
-  text-align: center;
-  color: var(--text-muted);
+  color: var(--text-primary);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   pointer-events: none;
 }
 
@@ -102,6 +104,13 @@ html, body {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   font-size: 11px;
+  cursor: move;
+}
+
+/* The system status bar is a drag region like the title: its contents let
+   clicks through, since Tauri only drags from the marked element itself. */
+#usage-bar * {
+  pointer-events: none;
 }
 
 /* Each metric shrinks (not wraps) when the window gets narrow, so the bar
@@ -509,14 +518,13 @@ body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
 /* Compact view (context menu > Compact view, see applyDensity in main.ts):
    small icon, two short lines — folder + status, then title · activity —
    and tighter spacing everywhere. */
-body[data-density="compact"] #drag-region {
-  height: 12px;
-  margin-bottom: 2px;
+body[data-density="compact"] #app-logo {
+  width: 14px;
+  height: 14px;
 }
 
 body[data-density="compact"] #app-title {
   font-size: 10px;
-  line-height: 12px;
 }
 
 body[data-density="compact"] #usage-bar {
@@ -606,63 +614,6 @@ body[data-density="compact"] .session-compact-detail:empty {
   text-align: center;
 }
 
-.context-menu {
-  position: fixed;
-  min-width: 160px;
-  background: var(--menu-bg);
-  border: 1px solid var(--menu-border);
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow: 0 4px 16px var(--menu-shadow);
-  z-index: 1000;
-  color: var(--text-primary);
-}
-
-/* In manual size the window can be smaller than the menu; let the menu scroll
-   instead of cutting off its lower entries. (Auto size grows the window
-   instead, see requiredWindowHeight in main.ts.) */
-body[data-size-mode="manual"] .context-menu {
-  max-height: calc(100vh - 8px);
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.context-menu-item:hover {
-  background: var(--menu-hover);
-}
-
-.menu-check {
-  width: 12px;
-  visibility: hidden;
-}
-
-.context-menu-item.checked .menu-check {
-  visibility: visible;
-}
-
-.context-menu-separator {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--menu-separator);
-}
-
-.context-menu-label {
-  padding: 4px 10px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
 /* Window has no OS decorations, so there's no native resize border — these
    invisible strips call startResizeDragging() to fake one. Only active in
    "manual" size mode (see applySizeMode in main.ts); auto mode owns the
@@ -750,4 +701,96 @@ body[data-size-mode="auto"] .resize-handle:not(.e):not(.w) {
 .resize-handle.sw {
   bottom: 0;
   left: 0;
+}
+
+/* About & help (right-click menu): a short in-app README that takes the
+   place of the session view while it is open. */
+body.about-open #filter-bar,
+body.about-open #session-list,
+body.about-open #orphan-warning,
+body.about-open #usage-bar {
+  display: none;
+}
+
+#about-panel {
+  padding: 4px 8px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#about-panel h2 {
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+
+#about-version {
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
+#about-panel p,
+#about-panel ul {
+  margin: 0 0 8px;
+}
+
+#about-panel ul {
+  padding-left: 16px;
+}
+
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.about-actions button {
+  padding: 3px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.about-actions button:hover {
+  border-color: var(--card-border-hover);
+}
+
+/* The repository button opens the browser: a light accent tint marks it as
+   a link, apart from the neutral Back button. */
+.about-actions #about-repo-btn {
+  background: color-mix(in srgb, var(--status-question) 14%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--status-question) 45%, transparent);
+  color: var(--status-question);
+  font-weight: 600;
+}
+
+.about-actions #about-repo-btn:hover {
+  background: color-mix(in srgb, var(--status-question) 24%, var(--card-bg));
+  border-color: var(--status-question);
+}
+
+/* Transparent background (View menu): the window panel disappears; title,
+   cards, chips, system status and the about panel keep their own
+   background. The empty-state text gets a soft shadow instead. */
+body[data-transparent="on"] #app {
+  background: transparent;
+}
+
+/* The title sits on the wallpaper now: a solid pill keeps it readable. */
+body[data-transparent="on"] #drag-region {
+  padding: 0 7px 0 4px;
+  border-radius: 999px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body[data-transparent="on"] .empty-state {
+  text-shadow: 0 0 3px var(--bg-app), 0 0 6px var(--bg-app);
+}
+
+body[data-transparent="on"] #about-panel {
+  background: var(--card-bg);
+  border-radius: 8px;
 }

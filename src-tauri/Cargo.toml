@@ -1,6 +1,6 @@
 [package]
 name = "session-widget"
-version = "0.3.2"
+version = "0.4.0"
 description = "AI Code Session Widget (fork of AI Session Widget) — running Claude Code and Codex sessions at a glance"
 authors = ["Kasper Legarth", "Michael Goldschmidt"]
 license = "MIT"
@@ -42,6 +42,8 @@ windows = { version = "0.58", features = [
     "Win32_Graphics_Dwm",
     # fork: IShellLinkW for the autostart shortcut, ShellExecuteW for the deep link
     "Win32_UI_Shell",
+    # fork: GetAsyncKeyState, end of a drag of the pinned widget (desktop.rs)
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [dev-dependencies]
