@@ -1,0 +1,31 @@
+name: Dependabot auto-merge
+
+# Turns on auto-merge for Dependabot pull requests that only contain minor
+# or patch updates. GitHub then merges once the required checks on main
+# (rust, frontend, gitleaks) are green; a red check keeps the pull request
+# open. Major updates get no auto-merge and wait for a review. Minor Tauri
+# updates never come from Dependabot (see .github/dependabot.yml).
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Read update metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enable auto-merge for minor and patch updates
+        # For a grouped pull request update-type is the largest update in it.
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

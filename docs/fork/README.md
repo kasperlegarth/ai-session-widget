@@ -47,6 +47,21 @@ cargo update --manifest-path src-tauri/Cargo.toml -p tauri
 
 `Cargo.lock` and `package-lock.json` are committed; CI builds with `--locked` and `npm ci` respectively and fails instead of silently updating.
 
+## Dependency updates
+
+Dependabot (`.github/dependabot.yml`) opens one grouped pull request per month each for npm, Cargo and GitHub Actions (minor and patch updates); each runs through CI. Security updates for known vulnerabilities come in addition whenever an advisory appears (repository setting, on). Minor and major Tauri updates are excluded there because npm and Cargo must move together: do them by hand as described in "Updating Tauri" above.
+
+New versions are only proposed once they are 7 days old (`cooldown`), so a hijacked or broken release is usually pulled before it reaches the widget; security updates skip the wait. `.github/workflows/dependabot-automerge.yml` turns on auto-merge for Dependabot pull requests with only minor and patch updates: GitHub merges them once the required checks are green. Major updates and red pull requests stay open for a review.
+
+## Repository protection
+
+Set in the GitHub settings (as of 0.4.0), not in files:
+
+- `main`: changes only via pull request (no approval required), required checks `rust`, `frontend` and `gitleaks`, no force push, no deletion. Auto-merge waits for these checks.
+- Tags `v*`: cannot be deleted or moved (ruleset "Protect release tags"); new tags are allowed, so releases work as described below.
+- Code scanning (CodeQL default setup), Dependabot alerts and security updates, secret scanning with push protection; workflow token read-only by default (workflows request write access themselves).
+- Repository admins can bypass the rules in an emergency.
+
 ## Secret scan
 
 Every push (any branch) and every pull request runs `.github/workflows/gitleaks.yml` (Actions → "Secret scan"): [gitleaks](https://github.com/gitleaks/gitleaks) scans the whole history and the run fails on a finding; the log shows rule and location, never the value. Nothing to set up after cloning. It runs after the push, so a finding is already on GitHub: rotate the secret first, then remove it from the history. GitHub's push protection (repository setting, on) additionally rejects known token formats before a push is accepted.
