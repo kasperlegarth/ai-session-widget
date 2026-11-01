@@ -7,6 +7,7 @@ mod com;
 mod commands;
 mod codex;
 mod deeplink;
+mod desktop;
 mod sessions;
 mod pid;
 mod status;
@@ -40,13 +41,21 @@ pub fn run() {
     }
 
     builder
+        .setup(|_app| {
+            // Keeps a pinned widget below the other windows (desktop.rs).
+            desktop::install_foreground_hook();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
             commands::focus_session,
             commands::kill_orphan_process,
-            commands::set_always_on_top,
+            commands::set_window_layer,
+            commands::raise_pinned,
+            commands::raise_pinned_for_drag,
             commands::close_app,
             commands::open_desktop_session,
+            commands::open_repository,
             commands::get_autostart,
             commands::set_autostart
         ])

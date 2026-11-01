@@ -68,10 +68,9 @@ with a brief highlight so you can spot it among a dozen open windows.
 - **Auto size shrinks again** — upstream's auto size could only grow (it
   measured `#app`, whose `min-height: 100%` never lets it drop below the
   current window height).
-- **Context menu never cut off** — the window grows while the menu is open
-  (auto size) or the menu scrolls (manual size). If that would push the
-  widget below the taskbar, it moves up while the menu is open and back down
-  when it closes. Growing content never reaches below the taskbar either.
+- **Native right-click menu** — a Windows popup menu that overlaps the
+  desktop and other windows, so it is never cut off and the widget no longer
+  has to grow for it. Growing content never reaches below the taskbar.
 - **Claude Desktop closed to the tray** — clicking one of its sessions shows
   Claude's hidden main window again instead of climbing on to explorer.exe
   and focusing some Explorer or helper window.
@@ -89,10 +88,13 @@ with a brief highlight so you can spot it among a dozen open windows.
   runtime.
 - **Tray icon** — the widget's mascot in the pose of the most urgent status
   (Waiting > Question > Working > Idle) with a dot in that status' colour
-  bottom left (red, blue, green, grey); the tooltip lists all counts. Single click hides the widget or
-  shows it again where it was; double click shows it right above the tray
-  icon, where it stays on the taskbar while it grows or shrinks until you
-  drag or resize it. Right click offers "Show / hide widget" and "Quit".
+  bottom left (red, blue, green, grey); the tooltip lists all counts.
+  Single click always brings the widget to the front (pinned to the
+  desktop: for 5 seconds); double click does "Bring to front". Right click shows "Bring to front", "Hide widget" and the
+  widget's full right-click menu, so settings work while it is hidden.
+  "Bring to front" shows the widget above all windows; pinned to the
+  desktop only until it loses focus (60 seconds at most), then it goes
+  back onto the desktop.
 - **Taskbar button** — shows the mascot in the pose of the most urgent
   status instead of the app icon, plus an overlay badge with the number of
   sessions that need you (Waiting + Question): red if any is waiting for
@@ -101,8 +103,9 @@ with a brief highlight so you can spot it among a dozen open windows.
   icon (sources in `assets/logo/`). With no sessions running, tray and
   taskbar button show it too (`src/public/logo.png`), instead of a mascot
   pose.
-- **Title** — "AI Code Session Widget" centred in the drag bar at the top,
-  in place of the grip.
+- **Title** — logo and "AI Sessions" at the left of the filter bar (full
+  name as tooltip), no separate title row. Drag the widget by the title,
+  any free spot of that bar, or the CPU/RAM/disk bar at the bottom.
 - **Background commands** — an idle session whose shell is still running
   (dev server, watcher, long build started in the background) shows
   "Background command running" and a green ring around its grey dot,
@@ -122,6 +125,10 @@ with a brief highlight so you can spot it among a dozen open windows.
 - **Installer** — the program file is `AI Code Session Widget.exe`, and the
   MSI no longer carries Tauri's hidden PowerShell step that downloads
   WebView2 when it is missing (Windows 11 ships WebView2).
+- **Pin to desktop** — sits on the desktop like a gadget instead of
+  floating on top: below all windows, without a taskbar button, and not
+  hidden by Win+D (owned by the desktop window). Outside that mode the
+  taskbar button can be switched off too.
 - **Start with Windows** — a shortcut in your Startup folder, toggled from
   the menu (installed build only). Written in-process through the Windows
   Shell's link object; the widget never starts PowerShell or any other
@@ -129,18 +136,25 @@ with a brief highlight so you can spot it among a dozen open windows.
 
 ## Settings
 
-All in the right-click menu. Stored in the widget's WebView LocalStorage,
-except "Start with Windows", which is the shortcut file itself.
+All in the right-click menu, in the submenus Window (always on top, pin to
+desktop, taskbar button, start with Windows), View (compact, transparent,
+size, light/dark/system theme) and On session click.
+Stored in the widget's WebView LocalStorage, except "Start with Windows",
+which is the shortcut file itself. **About & help** at the bottom of the menu
+shows a short usage summary, the version and a link to this repository.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Always on top | on | Keeps the widget above other windows |
-| Compact view | off | Small icon, two short lines per session (folder + status, then title · activity), tighter spacing |
+| Always on top | on | Keeps the widget above other windows (Win+D minimizes it like any window; use Pin to desktop to keep it visible) |
+| Pin to desktop | off | Desktop-gadget mode: below all other windows, no taskbar button (the tray icon stays), still visible after Win+D; comes up above the windows while you drag it. Turns "Always on top" off; switching it off returns to always on top. |
+| Show in taskbar | on | Taskbar button with the status badge; off leaves only the tray icon. Greyed out while pinned to the desktop (no button there) |
+| View → Transparent background | off | Hides the window panel; title bar, cards, chips, system status and the about panel stay solid |
+| View → Compact view | off | Small icon, two short lines per session (folder + status, then title · activity), tighter spacing |
 | Start with Windows | off | Creates/removes `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\AI Code Session Widget.lnk` |
-| Size: Auto / Manual | Auto | Auto fits the height to the content (width stays yours); Manual leaves both to you |
-| Theme | System | Light, Dark or follow Windows |
-| On click: Open in Claude Desktop | on | Claude Desktop sessions only. Opens `claude://claude.ai/epitaxy/<hostSessionId>`, then focuses and highlights the window as usual. |
-| On click: Select in sidebar (fallback) | off | Claude Desktop sessions only, and only when the link is off or failed. After focusing Desktop, switches its mode switch to "Code" if Chat/Cowork is showing, then finds exactly one clickable element named like the session title via UI Automation and invokes it. Ambiguous titles are not clicked. Retries because Electron builds its accessibility tree on demand. |
+| View → Auto / Manual size | Auto | Auto fits the height to the content (width stays yours); Manual leaves both to you |
+| View → Light / Dark / System theme | System | Light, Dark or follow Windows |
+| On session click: Open in Claude Desktop | on | Claude Desktop sessions only. Opens `claude://claude.ai/epitaxy/<hostSessionId>`, then focuses and highlights the window as usual. |
+| On session click: Select in sidebar (fallback) | off | Claude Desktop sessions only, and only when the link is off or failed. After focusing Desktop, switches its mode switch to "Code" if Chat/Cowork is showing, then finds exactly one clickable element named like the session title via UI Automation and invokes it. Ambiguous titles are not clicked. Retries because Electron builds its accessibility tree on demand. |
 | Filter chips, sort buttons | all statuses, Status ↓ | At the top, above the sessions (system status CPU/RAM/disk sits at the bottom); sort key Status / Title / Folder plus direction; remembered |
 
 ## Requirements

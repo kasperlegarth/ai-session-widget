@@ -2,10 +2,10 @@
 // - tray icon in the notification area: the widget's mascot in the pose of
 //   the most urgent status present (Waiting > Question > Working > Idle),
 //   with a dot in that status' colour bottom left; tooltip with all counts
-// - single click on the tray icon hides the widget or shows it again where
-//   it was; double click shows it right above the tray icon (it stays open
-//   and keeps sitting on the taskbar while it grows or shrinks, until you
-//   drag or resize it). Right click: "Show / hide widget" and "Quit".
+// - single click on the tray icon brings the widget to the front (pinned
+//   to the desktop: for 5 s); "Hide widget" in the tray menu hides it.
+//   Double click: "Bring to front" (pinned: until it loses focus, 60 s at most).
+//   Right click: the menu from contextMenu.ts (trayMenuEntries).
 // - taskbar button: the mascot in the most urgent pose replaces the app
 //   icon; an overlay badge on top shows the number of sessions that need
 //   you (Waiting + Question), red if any is Waiting, else blue
@@ -17,8 +17,9 @@
 import { Image } from "@tauri-apps/api/image";
 import { Menu } from "@tauri-apps/api/menu";
 import { TrayIcon } from "@tauri-apps/api/tray";
-import { PhysicalPosition, currentMonitor, getCurrentWindow, monitorFromPoint } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { mascotSnapshotSvg } from "./mascot";
+import type { MenuEntry } from "./contextMenu";
 import { STATUS_PRIORITY, type VisualStatus } from "./sessionOrder";
 
 const TRAY_ID = "session-widget-status";
@@ -50,6 +51,7 @@ const SNAPSHOT_TICK: Record<VisualStatus, number> = {
 
 const appWindow = getCurrentWindow();
 let tray: TrayIcon | null = null;
+let trayMenu: Menu | null = null;
 let lastTraySignature = "";
 let lastOverlaySignature = "";
 let lastTaskbarStatus: VisualStatus | "none" | null = null;
@@ -336,104 +338,27 @@ async function trayIconRgba(top: VisualStatus | undefined, count: number): Promi
 }
 
 // ---------------------------------------------------------------------------
-// Flyout above the tray icon
+// Clicks on the tray icon
 // ---------------------------------------------------------------------------
 
-/**
- * Physical-pixel anchor while the widget sits above the tray icon (after a
- * double click); null when it is wherever the user put it.
- */
-interface FlyoutAnchor {
-  centerX: number;
-  minX: number;
-  maxX: number;
-  /** Bottom edge to keep (taskbar at the bottom) … */
-  bottom: number;
-  /** … or top edge to keep (taskbar at the top). */
-  top: number | null;
-}
-
-let flyout: FlyoutAnchor | null = null;
-
-// A double click arrives as Click(Up), DoubleClick, Click(Up). The single
-// click toggle therefore waits briefly and is dropped if a double click
-// follows; the trailing Click(Up) after a double click is ignored.
-const SINGLE_CLICK_DELAY_MS = 250;
+// A double click arrives as Click(Up), DoubleClick, Click(Up). Single and
+// double click both bring the widget to the front, so the single click acts
+// at once (no waiting for a possible double click); the double click only
+// lengthens a pinned widget's time in front. The trailing Click(Up) after a
+// double click is ignored.
 const AFTER_DOUBLE_CLICK_IGNORE_MS = 600;
-let singleClickTimer: number | undefined;
 let lastDoubleClick = 0;
 
-async function placeFlyout(): Promise<void> {
-  if (!flyout) return;
-  const size = await appWindow.outerSize();
-  const x = Math.max(flyout.minX, Math.min(Math.round(flyout.centerX - size.width / 2), flyout.maxX - size.width));
-  const y = flyout.top !== null ? flyout.top : Math.round(flyout.bottom - size.height);
-  await appWindow.setPosition(new PhysicalPosition(x, y));
-}
-
-async function showWidget(): Promise<void> {
-  await appWindow.show();
-  await appWindow.unminimize();
-  await appWindow.setFocus();
-}
-
-async function openFlyout(iconX: number, iconY: number, iconW: number, iconH: number): Promise<void> {
-  const monitor = (await monitorFromPoint(iconX + iconW / 2, iconY + iconH / 2)) ?? (await currentMonitor());
-  if (monitor) {
-    const work = monitor.workArea;
-    const margin = Math.round(8 * monitor.scaleFactor);
-    const iconInUpperHalf = iconY + iconH / 2 < monitor.position.y + monitor.size.height / 2;
-    flyout = {
-      centerX: iconX + iconW / 2,
-      minX: work.position.x + margin,
-      maxX: work.position.x + work.size.width - margin,
-      bottom: work.position.y + work.size.height - margin,
-      top: iconInUpperHalf ? work.position.y + margin : null,
-    };
-    await placeFlyout();
-  }
-  await showWidget();
-}
-
-/** Keeps an open flyout attached to the tray after the window changed size (auto size). */
-export async function reanchorFlyout(): Promise<void> {
-  try {
-    await placeFlyout();
-  } catch (err) {
-    console.error("Failed to re-anchor the flyout", err);
-  }
-}
-
-/** The user moved or resized the window: from now on it is a normal widget. */
-export function pinFlyout(): void {
-  flyout = null;
-}
-
-/** Single click (and tray menu): hide the widget, or show it again where it was. */
-async function toggleWidget(): Promise<void> {
-  try {
-    if (await appWindow.isVisible()) {
-      await appWindow.hide();
-    } else {
-      await showWidget();
-      await reanchorFlyout(); // still above the tray if it was opened there
-    }
-  } catch (err) {
-    console.error("Failed to toggle the widget window", err);
-  }
-}
-
-function onTrayClick(): void {
+/** Single click: bring to front (windowLayer.ts onTrayClick, passed as `onClick`). */
+function onTrayClick(onClick: () => void): void {
   if (Date.now() - lastDoubleClick < AFTER_DOUBLE_CLICK_IGNORE_MS) return;
-  window.clearTimeout(singleClickTimer);
-  singleClickTimer = window.setTimeout(() => void toggleWidget(), SINGLE_CLICK_DELAY_MS);
+  onClick();
 }
 
-/** Double click: show the widget right above the tray icon (it stays open). */
-function onTrayDoubleClick(iconX: number, iconY: number, iconW: number, iconH: number): void {
-  window.clearTimeout(singleClickTimer);
+/** Double click: same as the tray menu's "Bring to front" (`onDoubleClick`). */
+function onTrayDoubleClick(onDoubleClick: () => void): void {
   lastDoubleClick = Date.now();
-  openFlyout(iconX, iconY, iconW, iconH).catch((err) => console.error("Failed to open above the tray", err));
+  onDoubleClick();
 }
 
 // ---------------------------------------------------------------------------
@@ -445,36 +370,53 @@ function tooltipFor(counts: Record<VisualStatus, number>): string {
   return `AI Code Session Widget — ${parts.length > 0 ? parts.join(", ") : "no active sessions"}`;
 }
 
-/** Creates the tray icon. `onQuit` closes the app. Safe to call again after a page reload. */
-export async function initTray(onQuit: () => void): Promise<void> {
+export interface TrayOptions {
+  onClick: () => void;
+  onDoubleClick: () => void;
+  /** Right-click menu (contextMenu.ts trayMenuEntries); setTrayMenu replaces it. */
+  menu: MenuEntry[];
+}
+
+/** Creates the tray icon. Safe to call again after a page reload. */
+export async function initTray({ onClick, onDoubleClick, menu }: TrayOptions): Promise<void> {
   try {
     // A dev-mode page reload keeps the old tray alive with a dead click handler.
     await TrayIcon.removeById(TRAY_ID).catch(() => undefined);
-    const menu = await Menu.new({
-      items: [
-        { id: "toggle", text: "Show / hide widget", action: () => void toggleWidget() },
-        { item: "Separator" },
-        { id: "quit", text: "Quit", action: () => onQuit() },
-      ],
-    });
+    trayMenu = await Menu.new({ items: menu });
     tray = await TrayIcon.new({
       id: TRAY_ID,
       tooltip: "AI Code Session Widget",
       icon: await Image.new(await trayDefaultRgba(), ICON_SIZE, ICON_SIZE),
-      menu,
+      menu: trayMenu,
       showMenuOnLeftClick: false,
       action: (event) => {
         if (event.type === "Click" && event.button === "Left" && event.buttonState === "Up") {
-          onTrayClick();
+          onTrayClick(onClick);
         } else if (event.type === "DoubleClick" && event.button === "Left") {
-          const { position, size } = event.rect;
-          onTrayDoubleClick(position.x, position.y, size.width, size.height);
+          onTrayDoubleClick(onDoubleClick);
         }
       },
     });
     lastTraySignature = "";
   } catch (err) {
     console.error("Failed to create the tray icon", err);
+  }
+}
+
+/**
+ * Replaces the tray icon's right-click menu (contextMenu.ts trayMenuEntries).
+ * main.ts calls it again whenever a setting changes, so the check marks stay
+ * right.
+ */
+export async function setTrayMenu(entries: MenuEntry[]): Promise<void> {
+  if (!tray) return;
+  try {
+    const previous = trayMenu;
+    trayMenu = await Menu.new({ items: entries });
+    await tray.setMenu(trayMenu);
+    await previous?.close();
+  } catch (err) {
+    console.error("Failed to update the tray menu", err);
   }
 }
 
