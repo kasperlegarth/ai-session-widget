@@ -47,6 +47,18 @@ cargo update --manifest-path src-tauri/Cargo.toml -p tauri
 
 `Cargo.lock` and `package-lock.json` are committed; CI builds with `--locked` and `npm ci` respectively and fails instead of silently updating.
 
+## Secret scan
+
+Every push (any branch) and every pull request runs `.github/workflows/gitleaks.yml` (Actions → "Secret scan"): [gitleaks](https://github.com/gitleaks/gitleaks) scans the whole history and the run fails on a finding; the log shows rule and location, never the value. Nothing to set up after cloning. It runs after the push, so a finding is already on GitHub: rotate the secret first, then remove it from the history. GitHub's push protection (repository setting, on) additionally rejects known token formats before a push is accepted.
+
+The same check locally, before pushing (gitleaks installed, e.g. `winget install Gitleaks.Gitleaks`; keep its version in step with `GITLEAKS_VERSION` in the workflow):
+
+```powershell
+gitleaks git . --redact --verbose
+```
+
+A pre-commit hook cannot do this for everyone: git never activates hooks from a cloned repository.
+
 ## New version and release
 
 1. Set the same version in three files: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`; `package-lock.json` and `src-tauri/Cargo.lock` follow (via `npm install` and `cargo build` respectively).
