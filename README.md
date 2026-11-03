@@ -148,7 +148,7 @@ shows a short usage summary, the version and a link to this repository.
 | Always on top | on | Keeps the widget above other windows (Win+D minimizes it like any window; use Pin to desktop to keep it visible) |
 | Pin to desktop | off | Desktop-gadget mode: below all other windows, no taskbar button (the tray icon stays), still visible after Win+D; comes up above the windows while you drag it. Turns "Always on top" off; switching it off returns to always on top. |
 | Show in taskbar | on | Taskbar button with the status badge; off leaves only the tray icon. Greyed out while pinned to the desktop (no button there) |
-| View → Transparent background | off | Hides the window panel; title bar, cards, chips, system status and the about panel stay solid |
+| View → Transparent background | off | Hides the window panel; title bar, cards, chips, system status, the empty-state hint and the about panel stay solid, so text stays sharp |
 | View → Compact view | off | Small icon, two short lines per session (folder + status, then title · activity), tighter spacing |
 | Start with Windows | off | Creates/removes `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\AI Code Session Widget.lnk` |
 | View → Auto / Manual size | Auto | Auto fits the height to the content (width stays yours); Manual leaves both to you |
