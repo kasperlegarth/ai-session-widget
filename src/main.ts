@@ -705,9 +705,10 @@ function render(sessions: SessionInfo[], totalCount: number = sessions.length): 
     row.li.classList.toggle("session-stale", stale);
     row.li.classList.toggle("session-background", background !== null);
 
-    // Long titles/details are cut off with an ellipsis; the tooltip has everything.
+    // Long titles/details are cut off with an ellipsis; the tooltip has
+    // everything, path first.
     row.li.title =
-      `${session.provider === "codex" ? "Codex" : "Claude Code"}: ${session.name}\n${session.cwd}` +
+      `${session.cwd}\n${session.name}` +
       (activity ? `\n${activity}` : "");
     const folder = lastPathSegment(session.cwd);
     const titleText = session.name.trim() !== "" ? session.name : folder;
