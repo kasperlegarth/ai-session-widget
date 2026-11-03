@@ -338,6 +338,38 @@ body[data-size-mode="manual"] #orphan-warning {
   margin-right: 8px;
 }
 
+/* Auto size, capped to the screen height (resizeWindowToContent): the window
+   stops growing, the chrome stays put and only the session list scrolls,
+   shrinking just as far as needed instead of stretching like in manual. */
+body[data-size-mode="auto"] #app {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body[data-size-mode="auto"] #app > * {
+  flex-shrink: 0;
+}
+
+body[data-size-mode="auto"] #session-list {
+  flex-shrink: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+body[data-size-mode="auto"][data-capped="on"] #session-list {
+  padding-right: 8px;
+}
+
+body[data-size-mode="auto"][data-capped="on"] #filter-bar,
+body[data-size-mode="auto"][data-capped="on"] #usage-bar,
+body[data-size-mode="auto"][data-capped="on"] #orphan-warning {
+  margin-right: 8px;
+}
+
 body[data-size-mode="manual"] #session-list {
   flex: 1;
   min-height: 0;
@@ -348,22 +380,22 @@ body[data-size-mode="manual"] #session-list {
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-body[data-size-mode="manual"] #session-list::-webkit-scrollbar {
+#session-list::-webkit-scrollbar {
   width: 8px;
 }
 
-body[data-size-mode="manual"] #session-list::-webkit-scrollbar-track {
+#session-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb {
+#session-list::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border: 2px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
 
-body[data-size-mode="manual"] #session-list::-webkit-scrollbar-thumb:hover {
+#session-list::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
 }
